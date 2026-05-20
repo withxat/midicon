@@ -1,0 +1,26 @@
+{
+	"name": "monorepo-template",
+	"type": "module",
+	"version": "1.0.0",
+	"private": true,
+	"packageManager": "pnpm@10.32.1",
+	"description": "A monorepo template for TypeScript projects",
+	"author": "Xat <i@xat.sh>(https://xat.sh)",
+	"license": "MIT",
+	"scripts": {
+		"dev": "turbo dev",
+		"build": "turbo build",
+		"typecheck": "turbo typecheck",
+		"lint": "turbo lint",
+		"lint:fix": "turbo lint -- --fix"
+	},
+	"devDependencies": {
+		"@withxat/eslint-config": "catalog:devtool",
+		"@withxat/tsconfig": "catalog:devtool",
+		"eslint": "catalog:devtool",
+		"jiti": "catalog:devtool",
+		"lefthook": "catalog:devtool",
+		"turbo": "catalog:devtool",
+		"typescript": "catalog:devtool"
+	}
+}
