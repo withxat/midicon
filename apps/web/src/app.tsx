@@ -251,34 +251,38 @@ export function App() {
 	}, [clearTransport, stopAnimationLoop])
 
 	return (
-		<main className="app-shell">
-			<section aria-label="MIDI player controls" className="control-rail">
+		<main className="grid min-h-screen grid-cols-1 text-[#fff8e7] md:grid-cols-[minmax(230px,280px)_minmax(0,1fr)]">
+			<section
+				aria-label="MIDI player controls"
+				className="sticky top-0 flex min-h-screen flex-col gap-[22px] self-start border-r border-[#fff8e7]/12 bg-[#18161f]/82 px-[22px] py-7 shadow-[0_20px_80px_rgba(0,0,0,0.32)] backdrop-blur-[18px] max-md:static max-md:min-h-[auto]"
+			>
 				<div>
-					<p className="eyebrow">Midicon MVP</p>
-					<h1>Little MIDI stage</h1>
+					<p className="mb-[7px] font-mono text-[0.72rem] font-bold tracking-[0.08em] text-[#ffcf70] uppercase">Midicon MVP</p>
+					<h1 className="m-0 max-w-[9ch] text-[clamp(2.4rem,6vw,4.8rem)] leading-[0.95] tracking-normal max-md:max-w-none max-md:text-5xl">Little MIDI stage</h1>
 				</div>
 
-				<label className="upload-button">
+				<label className="relative inline-flex min-h-12 w-full items-center justify-center gap-2.5 overflow-hidden rounded-lg bg-[#ffcf70] px-4 font-extrabold text-[#201a22] shadow-[0_10px_28px_rgba(255,207,112,0.24)] transition duration-150 ease-out active:scale-[0.96]">
 					<Upload aria-hidden="true" size={18} />
 					<span>Upload MIDI</span>
-					<input accept=".mid,.midi,audio/midi" onChange={handleUpload} type="file" />
+					<input accept=".mid,.midi,audio/midi" className="absolute inset-0 cursor-pointer opacity-0" onChange={handleUpload} type="file" />
 				</label>
 				{uploadError
-					? <p className="upload-error" role="status">{uploadError}</p>
+					? <p className="-mt-3 font-mono text-[0.74rem] leading-snug font-bold text-[#ffb3b3]" role="status">{uploadError}</p>
 					: null}
 
-				<div className="transport">
-					<button aria-label={isPlaying ? 'Pause' : 'Play'} className="icon-button primary" onClick={handlePlayPause} type="button">
+				<div className="flex gap-2.5">
+					<button aria-label={isPlaying ? 'Pause' : 'Play'} className="grid size-[46px] place-items-center rounded-lg border border-transparent bg-[#75d7c4] text-[#18161f] transition duration-150 ease-out active:scale-[0.96]" onClick={handlePlayPause} type="button">
 						{isPlaying ? <Pause size={18} /> : <Play size={18} />}
 					</button>
-					<button aria-label="Reset" className="icon-button" onClick={handleReset} type="button">
+					<button aria-label="Reset" className="grid size-[46px] place-items-center rounded-lg border border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7] transition duration-150 ease-out active:scale-[0.96]" onClick={handleReset} type="button">
 						<RotateCcw size={18} />
 					</button>
 				</div>
 
-				<label className="slider-row">
+				<label className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 font-mono text-[0.78rem] text-[#fff8e7]/78">
 					<span>{formatTime(currentTime)}</span>
 					<input
+						className="w-full accent-[#ffcf70]"
 						max={song.duration}
 						min="0"
 						onChange={event => handleSeek(Number(event.target.value))}
@@ -289,9 +293,9 @@ export function App() {
 					<span>{formatTime(song.duration)}</span>
 				</label>
 
-				<label className="speed-control">
+				<label className="grid gap-2 font-mono text-[0.78rem] font-bold text-[#fff8e7]/76 uppercase">
 					<span>Speed</span>
-					<select onChange={event => handleSpeedChange(Number(event.target.value))} value={speed}>
+					<select className="min-h-[42px] rounded-lg border border-[#fff8e7]/18 bg-[#272431] px-3 pr-[34px] text-[#fff8e7]" onChange={event => handleSpeedChange(Number(event.target.value))} value={speed}>
 						<option value={0.75}>0.75x</option>
 						<option value={1}>1x</option>
 						<option value={1.25}>1.25x</option>
@@ -300,19 +304,19 @@ export function App() {
 				</label>
 			</section>
 
-			<section className="stage-layout">
-				<div className="song-strip">
+			<section className="grid min-w-0 grid-rows-[auto_minmax(360px,1fr)_auto_auto] gap-[18px] p-[26px] max-md:grid-rows-[auto_340px_auto_auto] max-md:p-3.5">
+				<div className="flex items-center justify-between gap-[18px] rounded-lg border border-[#fff8e7]/14 bg-[#fff8e7]/7 p-[18px_20px] shadow-[0_12px_46px_rgba(0,0,0,0.22)] max-md:flex-col max-md:items-stretch">
 					<div>
-						<p className="eyebrow">Now playing</p>
-						<h2>{song.fileName}</h2>
+						<p className="mb-[7px] font-mono text-[0.72rem] font-bold tracking-[0.08em] text-[#ffcf70] uppercase">Now playing</p>
+						<h2 className="m-0 text-[clamp(1.5rem,3vw,2.6rem)] leading-[0.95] tracking-normal">{song.fileName}</h2>
 					</div>
-					<div className="song-stats">
-						<span>
+					<div className="flex flex-wrap justify-end gap-2">
+						<span className="rounded-lg bg-[#fff8e7] px-2.5 py-[7px] font-mono text-[0.74rem] font-extrabold text-[#18161f]">
 							{song.performers.length}
 							{' '}
 							parts
 						</span>
-						<span>
+						<span className="rounded-lg bg-[#fff8e7] px-2.5 py-[7px] font-mono text-[0.74rem] font-extrabold text-[#18161f]">
 							{Math.round(song.bpm)}
 							{' '}
 							bpm
@@ -320,7 +324,7 @@ export function App() {
 					</div>
 				</div>
 
-				<div className="stage-panel">
+				<div className="overflow-hidden rounded-lg border border-[#ffcf70]/18 bg-[#191821] shadow-[inset_0_-40px_80px_rgba(255,207,112,0.08)] [&_canvas]:block">
 					<Canvas camera={{ fov: 43, position: [0, 3.1, 7.2] }} dpr={[1, 1.8]}>
 						<color args={['#191821']} attach="background" />
 						<ambientLight intensity={1.8} />
@@ -329,28 +333,28 @@ export function App() {
 					</Canvas>
 				</div>
 
-				<div className="ensemble-panel">
+				<div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5">
 					{song.performers.map(performer => (
 						<button
-							className={`performer-chip ${performer.id === focused.id ? 'is-focused' : ''}`}
+							className={`grid min-h-[54px] grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 rounded-lg border p-[9px_12px] text-left text-[#fff8e7] transition duration-150 ease-out active:scale-[0.96] ${performer.id === focused.id ? 'border-(--accent) bg-[#ffcf70]/16' : 'border-[#fff8e7]/14 bg-[#fff8e7]/7'}`}
 							key={performer.id}
 							onClick={() => setFocusedId(performer.id)}
 							style={{ '--accent': performer.accent } as CSSProperties}
 							type="button"
 						>
-							<span>{performer.avatar}</span>
-							<strong>{performer.name}</strong>
+							<span className="grid size-[34px] place-items-center rounded-full bg-(--accent) text-[0.72rem] font-black text-[#211b22]">{performer.avatar}</span>
+							<strong className="overflow-hidden text-ellipsis whitespace-nowrap">{performer.name}</strong>
 						</button>
 					))}
 				</div>
 
-				<section aria-label={`${focused.name} score`} className="focus-panel">
-					<div className="focus-heading">
+				<section aria-label={`${focused.name} score`} className="grid gap-4 rounded-lg border border-[#fff8e7]/14 bg-[#fff8e7]/7 p-[18px] shadow-[0_12px_46px_rgba(0,0,0,0.22)]">
+					<div className="flex items-end justify-between gap-4 max-md:flex-col max-md:items-stretch">
 						<div>
-							<p className="eyebrow">Focused part</p>
-							<h2>{focused.name}</h2>
+							<p className="mb-[7px] font-mono text-[0.72rem] font-bold tracking-[0.08em] text-[#ffcf70] uppercase">Focused part</p>
+							<h2 className="m-0 text-[clamp(1.5rem,3vw,2.6rem)] leading-[0.95] tracking-normal">{focused.name}</h2>
 						</div>
-						<select onChange={event => updateInstrument(focused.id, event.target.value as InstrumentId)} value={focused.instrument}>
+						<select className="min-h-[42px] rounded-lg border border-[#fff8e7]/18 bg-[#272431] px-3 pr-[34px] text-[#fff8e7]" onChange={event => updateInstrument(focused.id, event.target.value as InstrumentId)} value={focused.instrument}>
 							{instruments.map(instrument => (
 								<option key={instrument.id} value={instrument.id}>{instrument.label}</option>
 							))}
@@ -525,7 +529,7 @@ function ScoreRoll({ accent, currentTime, notes }: { accent: string, currentTime
 		drawScore(context, rect.width, rect.height, notes, currentTime, accent)
 	}, [accent, currentTime, notes])
 
-	return <canvas aria-label="Scrolling staff notation" className="score-roll" ref={canvasRef} />
+	return <canvas aria-label="Scrolling staff notation" className="block h-[188px] w-full rounded-lg border-0 shadow-[inset_0_0_0_1px_rgba(43,38,51,0.1)] max-md:h-40" ref={canvasRef} />
 }
 
 function drawScore(

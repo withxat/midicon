@@ -20,12 +20,14 @@
 		"ui": "workspace:*"
 	},
 	"devDependencies": {
+		"@tailwindcss/vite": "catalog:tailwind",
 		"@types/react": "catalog:react",
 		"@types/react-dom": "catalog:react",
 		"@types/three": "^0.184.1",
 		"@vitejs/plugin-react": "^6.0.2",
 		"@withxat/eslint-config": "catalog:devtool",
 		"eslint": "catalog:devtool",
+		"tailwindcss": "catalog:tailwind",
 		"typescript": "catalog:devtool",
 		"vite": "^8.0.13"
 	}
