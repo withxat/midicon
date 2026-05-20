@@ -1,0 +1,32 @@
+{
+	"name": "web",
+	"type": "module",
+	"version": "0.1.0",
+	"private": true,
+	"scripts": {
+		"dev": "vite --host 0.0.0.0",
+		"build": "tsc --noEmit && vite build",
+		"typecheck": "tsc --noEmit",
+		"lint": "eslint",
+		"test": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@react-three/fiber": "^9.6.1",
+		"@tonejs/midi": "^2.0.28",
+		"react": "catalog:react",
+		"react-dom": "catalog:react",
+		"three": "^0.184.0",
+		"tone": "^15.1.22",
+		"ui": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/react": "catalog:react",
+		"@types/react-dom": "catalog:react",
+		"@types/three": "^0.184.1",
+		"@vitejs/plugin-react": "^6.0.2",
+		"@withxat/eslint-config": "catalog:devtool",
+		"eslint": "catalog:devtool",
+		"typescript": "catalog:devtool",
+		"vite": "^8.0.13"
+	}
+}

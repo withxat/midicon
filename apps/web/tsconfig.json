@@ -1,0 +1,11 @@
+{
+	"extends": "@withxat/tsconfig",
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"lib": ["DOM", "DOM.Iterable", "ES2023"],
+		"rootDir": ".",
+		"types": ["vite/client"],
+		"noEmit": true
+	},
+	"include": ["src", "vite.config.ts", "eslint.config.ts"]
+}

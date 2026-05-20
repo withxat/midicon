@@ -12,7 +12,8 @@
 		"build": "turbo build",
 		"typecheck": "turbo typecheck",
 		"lint": "turbo lint",
-		"lint:fix": "turbo lint -- --fix"
+		"lint:fix": "turbo lint -- --fix",
+		"test": "pnpm --filter web test"
 	},
 	"devDependencies": {
 		"@withxat/eslint-config": "catalog:devtool",
