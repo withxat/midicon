@@ -1,9 +1,17 @@
+import type { IconifyIcon } from '@iconify/types'
 import type { ChangeEvent, CSSProperties } from 'react'
-import type { Mesh } from 'three'
+import type { Group, Texture } from 'three'
 
+import drumIcon from '@iconify-icons/game-icons/drum-kit'
+import fluteIcon from '@iconify-icons/game-icons/flute'
+import guitarIcon from '@iconify-icons/game-icons/guitar'
+import bassIcon from '@iconify-icons/game-icons/guitar-bass-head'
+import pianoIcon from '@iconify-icons/game-icons/piano-keys'
+import { Icon } from '@iconify/react/offline'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Midi } from '@tonejs/midi'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CanvasTexture } from 'three'
 import * as Tone from 'tone'
 import { Pause, Play, RotateCcw, Upload } from 'ui/icons'
 
@@ -44,6 +52,13 @@ const instruments: Array<{ id: InstrumentId, label: string }> = [
 const palette = ['#ffcf70', '#ff8da1', '#75d7c4', '#a8b8ff', '#f59ee6']
 const avatars = ['Mimi', 'Koko', 'Bibi', 'Nana', 'Lulu']
 const maxMidiFileSize = 5 * 1024 * 1024
+const iconByInstrument: Record<InstrumentId, IconifyIcon> = {
+	bass: bassIcon,
+	drums: drumIcon,
+	flute: fluteIcon,
+	guitar: guitarIcon,
+	piano: pianoIcon,
+}
 
 const demoSong: Song = {
 	bpm: 112,
@@ -329,14 +344,14 @@ export function App() {
 						<color args={['#191821']} attach="background" />
 						<ambientLight intensity={1.8} />
 						<directionalLight intensity={1.4} position={[4, 6, 4]} />
-						<Stage activeNotes={activeNotesByPerformer} focusedId={focused.id} onFocus={setFocusedId} performers={song.performers} />
+						<Stage activeNotes={activeNotesByPerformer} focusedId={focused.id} isPlaying={isPlaying} onFocus={setFocusedId} performers={song.performers} />
 					</Canvas>
 				</div>
 
 				<div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5">
 					{song.performers.map(performer => (
 						<button
-							className={`grid min-h-[54px] grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 rounded-lg border p-[9px_12px] text-left text-[#fff8e7] transition duration-150 ease-out active:scale-[0.96] ${performer.id === focused.id ? 'border-(--accent) bg-[#ffcf70]/16' : 'border-[#fff8e7]/14 bg-[#fff8e7]/7'}`}
+							className={`grid min-h-[54px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border p-[9px_12px] text-left text-[#fff8e7] transition duration-150 ease-out active:scale-[0.96] ${performer.id === focused.id ? 'border-(--accent) bg-[#ffcf70]/16' : 'border-[#fff8e7]/14 bg-[#fff8e7]/7'}`}
 							key={performer.id}
 							onClick={() => setFocusedId(performer.id)}
 							style={{ '--accent': performer.accent } as CSSProperties}
@@ -344,6 +359,7 @@ export function App() {
 						>
 							<span className="grid size-[34px] place-items-center rounded-full bg-(--accent) text-[0.72rem] font-black text-[#211b22]">{performer.avatar}</span>
 							<strong className="overflow-hidden text-ellipsis whitespace-nowrap">{performer.name}</strong>
+							<Icon className="text-[#ffcf70]" height={18} icon={iconByInstrument[performer.instrument]} width={18} />
 						</button>
 					))}
 				</div>
@@ -370,11 +386,13 @@ export function App() {
 function Stage({
 	activeNotes,
 	focusedId,
+	isPlaying,
 	onFocus,
 	performers,
 }: {
 	activeNotes: Map<string, number>
 	focusedId: string
+	isPlaying: boolean
 	onFocus: (id: string) => void
 	performers: Performer[]
 }) {
@@ -392,6 +410,7 @@ function Stage({
 					<PerformerModel
 						active={activeNotes.get(performer.id) ?? 0}
 						focused={performer.id === focusedId}
+						isPlaying={isPlaying}
 						key={performer.id}
 						onFocus={() => onFocus(performer.id)}
 						performer={performer}
@@ -406,109 +425,138 @@ function Stage({
 function PerformerModel({
 	active,
 	focused,
+	isPlaying,
 	onFocus,
 	performer,
 	position,
 }: {
 	active: number
 	focused: boolean
+	isPlaying: boolean
 	onFocus: () => void
 	performer: Performer
 	position: [number, number, number]
 }) {
-	const bodyRef = useRef<Mesh>(null)
-	const armRef = useRef<Mesh>(null)
+	const groupRef = useRef<Group>(null)
+	const avatarTexture = useAvatarTexture(performer)
+	const iconTexture = useInstrumentIconTexture(performer.instrument)
 
 	useFrame(({ clock }) => {
-		const beat = Math.sin(clock.elapsedTime * 8) * active
-		if (bodyRef.current) {
-			bodyRef.current.position.y = 0.52 + beat * 0.08
-			bodyRef.current.rotation.z = Math.sin(clock.elapsedTime * 2.4) * 0.04
+		if (!groupRef.current) {
+			return
 		}
-		if (armRef.current) {
-			armRef.current.rotation.z = -0.35 - active * 0.45 + Math.sin(clock.elapsedTime * 10) * active * 0.1
-		}
+		const sway = isPlaying ? Math.sin(clock.elapsedTime * 1.8 + position[0]) * 0.1 : 0
+		const bounce = active ? 1 + Math.sin(clock.elapsedTime * 16) * 0.06 + 0.08 : 1
+		groupRef.current.rotation.z = sway
+		groupRef.current.scale.set(bounce, active ? 1 / bounce : 1, 1)
 	})
 
 	return (
 		<group onClick={onFocus} position={position}>
-			<mesh position={[0, -0.52, 0]}>
-				<cylinderGeometry args={[0.48, 0.6, 0.24, 32]} />
-				<meshStandardMaterial color={focused ? '#fff0ad' : '#40364b'} roughness={0.7} />
+			<mesh position={[0, -0.6, -0.04]} rotation={[-Math.PI / 2, 0, 0]}>
+				<circleGeometry args={[0.74, 40]} />
+				<meshStandardMaterial color={focused ? '#fff0ad' : '#302b40'} opacity={focused ? 0.42 : 0.24} roughness={0.8} transparent />
 			</mesh>
-			<mesh position={[0, 0.52, 0]} ref={bodyRef}>
-				<sphereGeometry args={[0.58, 28, 28]} />
-				<meshStandardMaterial color={performer.accent} roughness={0.58} />
-			</mesh>
-			<mesh position={[0, 1.18, 0]}>
-				<sphereGeometry args={[0.34, 28, 28]} />
-				<meshStandardMaterial color="#fff3d4" roughness={0.65} />
-			</mesh>
-			<mesh position={[0.5, 0.62, 0.06]} ref={armRef} rotation={[0, 0, -0.35]}>
-				<capsuleGeometry args={[0.07, 0.62, 5, 12]} />
-				<meshStandardMaterial color="#fff3d4" roughness={0.65} />
-			</mesh>
-			<mesh position={[-0.5, 0.62, 0.06]} rotation={[0, 0, 0.35]}>
-				<capsuleGeometry args={[0.07, 0.62, 5, 12]} />
-				<meshStandardMaterial color="#fff3d4" roughness={0.65} />
-			</mesh>
-			<InstrumentMesh instrument={performer.instrument} />
+			<group ref={groupRef}>
+				<mesh>
+					<planeGeometry args={[1.24, 1.52]} />
+					<meshBasicMaterial map={avatarTexture} transparent />
+				</mesh>
+				<mesh position={[0.45, 0.54, 0.04]}>
+					<circleGeometry args={[0.25, 32]} />
+					<meshBasicMaterial color="#fff8e7" />
+				</mesh>
+				<mesh position={[0.45, 0.54, 0.05]}>
+					<planeGeometry args={[0.34, 0.34]} />
+					<meshBasicMaterial color="#2b2633" map={iconTexture} transparent />
+				</mesh>
+			</group>
 		</group>
 	)
 }
 
-function InstrumentMesh({ instrument }: { instrument: InstrumentId }) {
-	if (instrument === 'drums') {
-		return (
-			<group position={[0.18, 0.15, 0.36]}>
-				<mesh rotation={[Math.PI / 2, 0, 0]}>
-					<cylinderGeometry args={[0.34, 0.34, 0.22, 32]} />
-					<meshStandardMaterial color="#f9faf2" roughness={0.42} />
-				</mesh>
-				<mesh position={[0.38, 0.05, 0]} rotation={[Math.PI / 2, 0, 0]}>
-					<cylinderGeometry args={[0.18, 0.18, 0.12, 24]} />
-					<meshStandardMaterial color="#ff8da1" roughness={0.5} />
-				</mesh>
-			</group>
-		)
-	}
+function useAvatarTexture(performer: Performer) {
+	return useMemo(() => {
+		const canvas = document.createElement('canvas')
+		canvas.width = 384
+		canvas.height = 448
+		const context = canvas.getContext('2d')!
+		const gradient = context.createLinearGradient(0, 0, 384, 448)
+		gradient.addColorStop(0, '#fff8e7')
+		gradient.addColorStop(0.46, performer.accent)
+		gradient.addColorStop(1, '#2b2633')
 
-	if (instrument === 'flute') {
-		return (
-			<mesh position={[0.18, 0.74, 0.38]} rotation={[0, 0, Math.PI / 2]}>
-				<capsuleGeometry args={[0.045, 0.9, 8, 16]} />
-				<meshStandardMaterial color="#d8f7ff" metalness={0.12} roughness={0.36} />
-			</mesh>
-		)
-	}
+		context.fillStyle = 'rgba(0, 0, 0, 0)'
+		context.fillRect(0, 0, 384, 448)
+		roundRect(context, 56, 34, 272, 360, 80)
+		context.fillStyle = gradient
+		context.fill()
+		context.lineWidth = 10
+		context.strokeStyle = '#fff8e7'
+		context.stroke()
 
-	if (instrument === 'guitar' || instrument === 'bass') {
-		return (
-			<group position={[0.2, 0.22, 0.38]} rotation={[0, 0, -0.18]}>
-				<mesh>
-					<sphereGeometry args={[instrument === 'bass' ? 0.28 : 0.24, 24, 24]} />
-					<meshStandardMaterial color={instrument === 'bass' ? '#a8b8ff' : '#ffcf70'} roughness={0.5} />
-				</mesh>
-				<mesh position={[0.45, 0.32, 0]} rotation={[0, 0, -0.68]}>
-					<capsuleGeometry args={[0.045, instrument === 'bass' ? 0.95 : 0.72, 6, 12]} />
-					<meshStandardMaterial color="#5b3d33" roughness={0.55} />
-				</mesh>
-			</group>
-		)
-	}
+		context.fillStyle = '#fff3d4'
+		context.beginPath()
+		context.arc(192, 142, 70, 0, Math.PI * 2)
+		context.fill()
+		context.fillStyle = '#2b2633'
+		context.font = '900 64px Georgia, serif'
+		context.textAlign = 'center'
+		context.fillText(performer.avatar.slice(0, 2), 192, 278)
 
-	return (
-		<group position={[0.12, 0.2, 0.38]}>
-			<mesh>
-				<boxGeometry args={[0.72, 0.2, 0.24]} />
-				<meshStandardMaterial color="#fff0ad" roughness={0.48} />
-			</mesh>
-			<mesh position={[0, 0.12, 0.01]}>
-				<boxGeometry args={[0.62, 0.04, 0.26]} />
-				<meshStandardMaterial color="#2b2633" roughness={0.4} />
-			</mesh>
-		</group>
-	)
+		const texture = new CanvasTexture(canvas)
+		texture.needsUpdate = true
+		return texture
+	}, [performer])
+}
+
+function useInstrumentIconTexture(instrument: InstrumentId) {
+	const [texture, setTexture] = useState<Texture>(() => createBlankIconTexture())
+
+	useEffect(() => {
+		let cancelled = false
+		const icon = iconByInstrument[instrument]
+		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${icon.width ?? 512}" height="${icon.height ?? 512}" viewBox="0 0 ${icon.width ?? 512} ${icon.height ?? 512}">${icon.body}</svg>`
+		const image = new Image()
+		image.onload = () => {
+			if (cancelled) {
+				return
+			}
+			const canvas = document.createElement('canvas')
+			canvas.width = 256
+			canvas.height = 256
+			const context = canvas.getContext('2d')!
+			context.drawImage(image, 18, 18, 220, 220)
+			const nextTexture = new CanvasTexture(canvas)
+			nextTexture.needsUpdate = true
+			setTexture(nextTexture)
+		}
+		image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.replaceAll('currentColor', '#2b2633'))}`
+		return () => {
+			cancelled = true
+		}
+	}, [instrument])
+
+	return texture
+}
+
+function createBlankIconTexture() {
+	const canvas = document.createElement('canvas')
+	canvas.width = 4
+	canvas.height = 4
+	const texture = new CanvasTexture(canvas)
+	texture.needsUpdate = true
+	return texture
+}
+
+function roundRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+	context.beginPath()
+	context.moveTo(x + radius, y)
+	context.arcTo(x + width, y, x + width, y + height, radius)
+	context.arcTo(x + width, y + height, x, y + height, radius)
+	context.arcTo(x, y + height, x, y, radius)
+	context.arcTo(x, y, x + width, y, radius)
+	context.closePath()
 }
 
 function ScoreRoll({ accent, currentTime, notes }: { accent: string, currentTime: number, notes: NoteEvent[] }) {
