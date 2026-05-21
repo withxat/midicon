@@ -151,7 +151,7 @@ function computeShot(name: ShotName, ctx: ShotContext): Shot {
 function masterWide({ stageReach }: ShotContext): Shot {
 	return {
 		look: [0, 0.05, -0.8],
-		pos: [0, stageReach * 0.45 + 1, stageReach + 3.8],
+		pos: [0, stageReach * 0.5 + 1.4, stageReach + 7.2],
 	}
 }
 
@@ -159,7 +159,7 @@ function masterLow({ stageReach, t }: ShotContext): Shot {
 	const drift = Math.sin(t * 0.12) * stageReach * 0.18
 	return {
 		look: [drift * 0.4, 0.1, -0.5],
-		pos: [drift, 1.8, stageReach + 2],
+		pos: [drift, 2.2, stageReach + 4.5],
 	}
 }
 
@@ -171,9 +171,9 @@ function sectionSpotlight(ctx: ShotContext): Shot {
 	}
 
 	const width = Math.max(frame.maxX - frame.minX, 1.6)
-	const distance = Math.max(width * 0.9 + 3, 4.2)
+	const distance = Math.max(width * 1.1 + 4.2, 5.4)
 	const isBack = section === 'percussion' || section === 'brass' || section === 'synth' || section === 'woodwind'
-	const height = isBack ? 2.2 : 1.5
+	const height = isBack ? 2.5 : 1.9
 	const lookY = isBack ? 0.25 : -0.05
 
 	return {
@@ -203,14 +203,14 @@ function sweepShot({ stageReach, t }: ShotContext): Shot {
 	const pan = Math.sin(t * 0.22) * reach * 0.55
 	return {
 		look: [pan * 0.35, 0.05, -0.5],
-		pos: [pan, 1.55, reach + 2.1],
+		pos: [pan, 2.05, reach + 4.8],
 	}
 }
 
 function craneShot({ stageReach }: ShotContext): Shot {
 	return {
 		look: [0, -0.15, -1.1],
-		pos: [0, stageReach * 0.55 + 1.2, stageReach + 1.8],
+		pos: [0, stageReach * 0.62 + 1.4, stageReach + 4.2],
 	}
 }
 

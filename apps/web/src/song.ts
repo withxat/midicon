@@ -39,8 +39,13 @@ export interface Song {
 	midiBinary?: ArrayBuffer
 	performers: Performer[]
 	scoreSource?: {
-		kind: 'musicxml'
-		source: ArrayBuffer | string
+		kind: 'mei'
+		source: string
+		/**
+		 * Maps an `InstrumentCategory` to the list of MEI staff `@n` values that belong
+		 * to it. Used to filter the engraved score down to a focused performer's staves.
+		 */
+		staffsByCategory: Partial<Record<InstrumentCategory, string[]>>
 	}
 }
 

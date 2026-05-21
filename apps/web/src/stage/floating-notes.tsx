@@ -6,9 +6,9 @@ import { CanvasTexture } from 'three'
 
 const glyphs = ['♪', '♫', '♩', '♬']
 
-const SLOT_COUNT = 6
-const LIFETIME = 1.8
-const SPAWN_INTERVAL = 0.26
+const SLOT_COUNT = 3
+const LIFETIME = 1.35
+const SPAWN_INTERVAL = 0.5
 
 interface Slot {
 	glyph: number
@@ -49,10 +49,12 @@ export function FloatingNotes({
 	accent,
 	active,
 	isPlaying,
+	renderOrder = 0,
 }: {
 	accent: string
 	active: number
 	isPlaying: boolean
+	renderOrder?: number
 }) {
 	const textures = useMemo(getGlyphTextures, [])
 	const slotsRef = useRef<Slot[]>(
@@ -108,14 +110,14 @@ export function FloatingNotes({
 			sprite.visible = true
 			const k = age / LIFETIME
 			const drift = Math.sin(slot.seed + age * 2.4) * 0.34
-			const lift = 0.95 + k * 1.45
+			const lift = 0.95 + k * 1.1
 			sprite.position.set(drift, lift, 0.05)
-			const scale = 0.38 * (0.65 + 0.35 * (1 - k))
+			const scale = 0.32 * (0.65 + 0.35 * (1 - k))
 			sprite.scale.set(scale, scale, 1)
 			sprite.material.rotation = Math.sin(slot.seed + age * 3) * 0.4
 			const fadeIn = k < 0.14 ? k / 0.14 : 1
 			const fadeOut = 1 - (k - 0.2 < 0 ? 0 : ((k - 0.2) / 0.8) ** 1.6)
-			sprite.material.opacity = Math.max(0, fadeIn * fadeOut)
+			sprite.material.opacity = Math.max(0, fadeIn * fadeOut * 0.72)
 		}
 	})
 
@@ -127,6 +129,7 @@ export function FloatingNotes({
 						spritesRef.current[i] = value
 					}}
 					key={slot.id}
+					renderOrder={renderOrder}
 					visible={false}
 				>
 					<spriteMaterial color={accent} depthWrite={false} transparent />

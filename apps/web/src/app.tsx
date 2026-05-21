@@ -21,25 +21,28 @@ import trumpetIcon from '@iconify-icons/game-icons/trumpet'
 import violinIcon from '@iconify-icons/game-icons/violin'
 import xylophoneIcon from '@iconify-icons/game-icons/xylophone'
 import { Icon } from '@iconify/react/offline'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Midi } from '@tonejs/midi'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CanvasTexture } from 'three'
-import { Pause, Play, Repeat, RotateCcw, Upload } from 'ui/icons'
+import { CanvasTexture, Plane, Raycaster, Vector2, Vector3 } from 'three'
+import { BarChart3, Move, Music, Pause, Play, Repeat, RotateCcw, Scaling, Upload, Users } from 'ui/icons'
 
 import { createPreferredEngine } from './audio/create-engine'
-import { signalSoundFontName } from './audio/soundfont-sources'
+import { FloatingPanel } from './floating-panel'
 import { categoryById } from './instrument-category'
 import { groupTracksIntoPerformers, songFromMidi, withMidiBinary } from './midi-parse'
+import { PianoRoll } from './piano-roll'
+import { ScoreModal } from './score-modal'
 import {
 	maxMidiFileSize,
 	midiToNoteName,
-
 } from './song'
+import { BreathCamera } from './stage/breath-camera'
 import { DirectorCamera } from './stage/director-camera'
 import { FloatingNotes } from './stage/floating-notes'
 import { layoutOrchestra, stageRadius } from './stage/orchestra-layout'
-import { songFromMusicXml } from './verovio-musicxml'
+import { StageEnvironment } from './stage/stage-environment'
+import { scoreSourceFromMusicXml, songFromMusicXml } from './verovio-musicxml'
 import { VerovioScore } from './verovio-score'
 import { convertMidiToMusicXml } from './webmscore-convert'
 
@@ -60,6 +63,113 @@ const iconByCategory: Record<InstrumentCategory, IconifyIcon> = {
 }
 
 const demoSong: Song = buildDemoSong()
+
+const performerScalesStorageKey = 'midicon:performer-scales'
+const performerOffsetsStorageKey = 'midicon:performer-offsets'
+const minPerformerScale = 0.4
+const maxPerformerScale = 2.5
+const finalFileExtensionPattern = /\.[^./\\]+$/
+
+const groundPlane = new Plane(new Vector3(0, 0, 1), 0)
+const pointerRaycaster = new Raycaster()
+const pointerNdc = new Vector2()
+const pointerWorld = new Vector3()
+
+/**
+ * Convert a DOM pointer position to a world coordinate on the performer's
+ * depth plane. Returns null if the ray misses the plane, which only happens at
+ * oblique camera angles.
+ */
+function pointerToWorld(
+	camera: Parameters<typeof pointerRaycaster.setFromCamera>[1],
+	canvas: HTMLCanvasElement,
+	clientX: number,
+	clientY: number,
+	planeZ = 0,
+): null | { x: number, y: number } {
+	const rect = canvas.getBoundingClientRect()
+	pointerNdc.set(
+		((clientX - rect.left) / rect.width) * 2 - 1,
+		-((clientY - rect.top) / rect.height) * 2 + 1,
+	)
+	pointerRaycaster.setFromCamera(pointerNdc, camera)
+	groundPlane.constant = -planeZ
+	const hit = pointerRaycaster.ray.intersectPlane(groundPlane, pointerWorld)
+	if (!hit) {
+		return null
+	}
+	return { x: pointerWorld.x, y: pointerWorld.y }
+}
+
+interface PerformerOffset {
+	x: number
+	y: number
+}
+
+function loadStoredOffsets(): Record<string, PerformerOffset> {
+	if (typeof window === 'undefined') {
+		return {}
+	}
+	try {
+		const raw = window.localStorage.getItem(performerOffsetsStorageKey)
+		if (!raw) {
+			return {}
+		}
+		const parsed = JSON.parse(raw) as unknown
+		if (!parsed || typeof parsed !== 'object') {
+			return {}
+		}
+		const sanitized: Record<string, PerformerOffset> = {}
+		for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+			if (!value || typeof value !== 'object') {
+				continue
+			}
+			const v = value as { x?: unknown, y?: unknown }
+			if (typeof v.x === 'number' && typeof v.y === 'number' && Number.isFinite(v.x) && Number.isFinite(v.y)) {
+				sanitized[id] = { x: v.x, y: v.y }
+			}
+		}
+		return sanitized
+	}
+	catch {
+		return {}
+	}
+}
+
+function loadStoredScales(): Record<string, number> {
+	if (typeof window === 'undefined') {
+		return {}
+	}
+	try {
+		const raw = window.localStorage.getItem(performerScalesStorageKey)
+		if (!raw) {
+			return {}
+		}
+		const parsed = JSON.parse(raw) as unknown
+		if (!parsed || typeof parsed !== 'object') {
+			return {}
+		}
+		const sanitized: Record<string, number> = {}
+		for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+			if (typeof value !== 'number' || !Number.isFinite(value)) {
+				continue
+			}
+			sanitized[id] = clampScale(value)
+		}
+		return sanitized
+	}
+	catch {
+		return {}
+	}
+}
+
+function clampScale(value: number): number {
+	return Math.min(maxPerformerScale, Math.max(minPerformerScale, value))
+}
+
+function displayFileName(fileName: string): string {
+	return fileName.replace(finalFileExtensionPattern, '')
+}
 
 function buildDemoSong(): Song {
 	const tracks: TrackSource[] = [
@@ -107,7 +217,6 @@ export function App() {
 	const [isLooping, setIsLooping] = useState(false)
 	const [speed, setSpeed] = useState(1)
 	const [uploadError, setUploadError] = useState('')
-	const [engineLabel, setEngineLabel] = useState('Loading audio…')
 	const [isAudioReady, setIsAudioReady] = useState(false)
 	const playbackOffsetRef = useRef(0)
 	const playbackSpeedRef = useRef(1)
@@ -116,11 +225,59 @@ export function App() {
 	const engineRef = useRef<AudioEngine | null>(null)
 	const rafRef = useRef<null | number>(null)
 
+	const [scoreState, setScoreState] = useState<'closed' | 'error' | 'loading' | 'open'>('closed')
+	const [performersPanelOpen, setPerformersPanelOpen] = useState(false)
+	const [rollPanelOpen, setRollPanelOpen] = useState(false)
+	const [sizesPanelOpen, setSizesPanelOpen] = useState(false)
+	const [editMode, setEditMode] = useState(false)
+	const [performerScales, setPerformerScales] = useState<Record<string, number>>(() => loadStoredScales())
+	const [performerOffsets, setPerformerOffsets] = useState<Record<string, PerformerOffset>>(() => loadStoredOffsets())
+
+	useEffect(() => {
+		try {
+			window.localStorage.setItem(performerScalesStorageKey, JSON.stringify(performerScales))
+		}
+		catch {
+			// localStorage may be unavailable (private mode); the scales just won't persist.
+		}
+	}, [performerScales])
+
+	useEffect(() => {
+		try {
+			window.localStorage.setItem(performerOffsetsStorageKey, JSON.stringify(performerOffsets))
+		}
+		catch {
+			// As above; offsets just don't persist when storage is unavailable.
+		}
+	}, [performerOffsets])
+
+	const handleScaleChange = useCallback((id: string, value: number) => {
+		setPerformerScales(previous => ({ ...previous, [id]: clampScale(value) }))
+	}, [])
+
+	const handleResetScales = useCallback(() => {
+		setPerformerScales({})
+	}, [])
+
+	const handleOffsetChange = useCallback((id: string, x: number, y: number) => {
+		setPerformerOffsets(previous => ({ ...previous, [id]: { x, y } }))
+	}, [])
+
+	const handleResetOffsets = useCallback(() => {
+		setPerformerOffsets({})
+	}, [])
+
 	const focused = focusedId ? (song.performers.find(performer => performer.id === focusedId) ?? null) : null
-	const scoreNotes = focused
-		? focused.notes
-		: song.performers.flatMap(performer => performer.notes).sort((a, b) => a.time - b.time)
 	const scoreAccent = focused?.accent ?? '#ffcf70'
+	const pianoRollTracks = useMemo(
+		() => song.performers.map(performer => ({
+			accent: performer.accent,
+			id: performer.id,
+			muted: focusedId !== null && performer.id !== focusedId,
+			notes: performer.notes,
+		})),
+		[song.performers, focusedId],
+	)
 
 	const activeNotesByPerformer = useMemo(() => {
 		const active = new Map<string, number>()
@@ -265,16 +422,6 @@ export function App() {
 				const midiBinary = await file.arrayBuffer()
 				const midi = new Midi(midiBinary)
 				parsed = songFromMidi(midi, file.name, midiBinary)
-				const musicXml = await convertMidiToMusicXml(midiBinary)
-				if (musicXml) {
-					parsed = {
-						...parsed,
-						scoreSource: {
-							kind: 'musicxml',
-							source: musicXml,
-						},
-					}
-				}
 			}
 
 			engineRef.current?.pause()
@@ -284,6 +431,7 @@ export function App() {
 			setCurrentTime(0)
 			setIsPlaying(false)
 			setUploadError('')
+			setScoreState('closed')
 			event.target.value = ''
 		}
 		catch {
@@ -291,6 +439,39 @@ export function App() {
 			event.target.value = ''
 		}
 	}, [stopAnimationLoop])
+
+	const handleOpenScore = useCallback(async () => {
+		if (song.scoreSource) {
+			setScoreState('open')
+			return
+		}
+		if (!song.midiBinary) {
+			setScoreState('error')
+			return
+		}
+		setScoreState('loading')
+		try {
+			const musicXml = await convertMidiToMusicXml(song.midiBinary)
+			if (!musicXml) {
+				setScoreState('error')
+				return
+			}
+			const scoreSource = await scoreSourceFromMusicXml(musicXml)
+			if (!scoreSource) {
+				setScoreState('error')
+				return
+			}
+			setSong(previous => ({ ...previous, scoreSource }))
+			setScoreState('open')
+		}
+		catch {
+			setScoreState('error')
+		}
+	}, [song])
+
+	const handleCloseScore = useCallback(() => {
+		setScoreState(state => (state === 'loading' ? state : 'closed'))
+	}, [])
 
 	useEffect(() => {
 		let cancelled = false
@@ -305,11 +486,10 @@ export function App() {
 			engineRef.current = loadedEngine
 			loadedEngine.setLoop(isLoopingRef.current)
 			loadedEngine.setSpeed(playbackSpeedRef.current || 1)
-			setEngineLabel(loadedEngine.kind === 'spessasynth' ? signalSoundFontName : 'Web synth (Tone fallback)')
 			setIsAudioReady(true)
 		}).catch(() => {
 			if (!cancelled) {
-				setEngineLabel('Audio unavailable')
+				setIsAudioReady(false)
 			}
 		})
 
@@ -334,185 +514,381 @@ export function App() {
 	}, [isAudioReady, song])
 
 	return (
-		<main className="grid min-h-screen grid-cols-1 text-[#fff8e7] md:grid-cols-[minmax(230px,280px)_minmax(0,1fr)]">
-			<section
-				aria-label="MIDI player controls"
-				className="sticky top-0 flex min-h-screen flex-col gap-[22px] self-start border-r border-[#fff8e7]/12 bg-[#18161f]/82 px-[22px] py-7 shadow-[0_20px_80px_rgba(0,0,0,0.32)] backdrop-blur-[18px] max-md:static max-md:min-h-[auto]"
-			>
-				<div>
-					<p className="mb-[7px] font-mono text-[0.72rem] font-bold tracking-[0.08em] text-[#ffcf70] uppercase">Midicon MVP</p>
-					<h1 className="m-0 max-w-[9ch] text-[clamp(2.4rem,6vw,4.8rem)] leading-[0.95] tracking-normal max-md:max-w-none max-md:text-5xl">Little MIDI stage</h1>
-				</div>
-
-				<label className="relative inline-flex min-h-12 w-full items-center justify-center gap-2.5 overflow-hidden rounded-lg bg-[#ffcf70] px-4 font-extrabold text-[#201a22] shadow-[0_10px_28px_rgba(255,207,112,0.24)] transition duration-150 ease-out active:scale-[0.96]">
-					<Upload aria-hidden="true" size={18} />
-					<span>Upload score</span>
-					<input accept=".mid,.midi,.musicxml,.xml,.mxl,audio/midi,application/vnd.recordare.musicxml,application/vnd.recordare.musicxml+xml" className="absolute inset-0 cursor-pointer opacity-0" onChange={handleUpload} type="file" />
-				</label>
-				{uploadError
-					? <p className="-mt-3 font-mono text-[0.74rem] leading-snug font-bold text-[#ffb3b3]" role="status">{uploadError}</p>
-					: null}
-
-				<div className="flex gap-2.5">
-					<button aria-label={isPlaying ? 'Pause' : 'Play'} className="grid size-[46px] place-items-center rounded-lg border border-transparent bg-[#75d7c4] text-[#18161f] transition duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50" disabled={!isAudioReady} onClick={handlePlayPause} type="button">
-						{isPlaying ? <Pause size={18} /> : <Play size={18} />}
-					</button>
-					<button aria-label="Reset" className="grid size-[46px] place-items-center rounded-lg border border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7] transition duration-150 ease-out active:scale-[0.96]" onClick={handleReset} type="button">
-						<RotateCcw size={18} />
-					</button>
-					<button
-						aria-label="Loop"
-						aria-pressed={isLooping}
-						className={`grid size-[46px] place-items-center rounded-lg border transition duration-150 ease-out active:scale-[0.96] ${isLooping ? 'border-[#ffcf70] bg-[#ffcf70]/22 text-[#ffcf70]' : 'border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7]'}`}
-						onClick={handleToggleLoop}
-						type="button"
-					>
-						<Repeat size={18} />
-					</button>
-				</div>
-
-				<label className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 font-mono text-[0.78rem] text-[#fff8e7]/78">
-					<span>{formatTime(currentTime)}</span>
-					<input
-						className="w-full accent-[#ffcf70]"
-						max={song.duration}
-						min="0"
-						onChange={event => handleSeek(Number(event.target.value))}
-						step="0.01"
-						type="range"
-						value={currentTime}
+		<main className="relative h-dvh w-screen overflow-hidden bg-transparent text-[#fff8e7]">
+			<div className={`absolute inset-0 [&_canvas]:block ${editMode ? '[&_canvas]:cursor-grab [&_canvas:active]:cursor-grabbing' : ''}`}>
+				<Canvas camera={{ fov: 42, position: [0, 3.2, 11.4] }} dpr={[1, 1.8]} gl={{ alpha: true }}>
+					<ambientLight intensity={1.8} />
+					<directionalLight intensity={1.4} position={[4, 6, 4]} />
+					<StageScene
+						activeNotes={activeNotesByPerformer}
+						editMode={editMode}
+						focusedId={focusedId}
+						isPlaying={isPlaying}
+						offsets={performerOffsets}
+						onFocus={id => setFocusedId(previous => previous === id ? null : id)}
+						onOffsetChange={handleOffsetChange}
+						onScaleChange={handleScaleChange}
+						performers={song.performers}
+						scales={performerScales}
 					/>
-					<span>{formatTime(song.duration)}</span>
+				</Canvas>
+			</div>
+
+			<div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-[#0d0c12]/80 via-[#0d0c12]/30 to-transparent" style={{ height: 'min(180px, 22vh)' }} />
+			<div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-[#0d0c12]/85 via-[#0d0c12]/35 to-transparent" style={{ height: 'min(220px, 28vh)' }} />
+			<div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(ellipse_at_center,transparent_62%,rgba(13,12,18,0.32)_100%)]" />
+
+			<div className="pointer-events-none absolute top-4 left-4 z-20 max-w-[60vw] max-md:right-4 max-md:max-w-none">
+				<div className="pointer-events-auto rounded-lg border border-[#fff8e7]/12 bg-[#18161f]/72 px-4 py-2.5 shadow-[0_18px_50px_rgba(0,0,0,0.42)] backdrop-blur-[14px]">
+					<p className="font-mono text-[0.62rem] font-bold tracking-[0.1em] text-[#ffcf70] uppercase">Now playing</p>
+					<h1 className="m-0 mt-0.5 truncate text-[clamp(1rem,2.2vw,1.4rem)] leading-tight">{displayFileName(song.fileName)}</h1>
+					<p className="mt-0.5 font-mono text-[0.66rem] text-[#fff8e7]/60">
+						{song.performers.length}
+						{' '}
+						parts ·
+						{' '}
+						{Math.round(song.bpm)}
+						{' '}
+						bpm
+					</p>
+				</div>
+			</div>
+
+			<div className="pointer-events-none absolute top-4 right-4 z-20 flex gap-2 max-md:top-[7.75rem] max-md:left-4 max-md:right-auto max-md:gap-1.5">
+				<label className="pointer-events-auto relative inline-flex h-11 items-center justify-center gap-2 overflow-hidden rounded-lg bg-[#ffcf70] px-4 font-extrabold text-[#201a22] shadow-[0_10px_28px_rgba(255,207,112,0.28)] transition duration-150 ease-out active:scale-[0.96] max-md:px-3 max-md:text-[0.85rem]">
+					<Upload aria-hidden="true" size={16} />
+					<span>Upload</span>
+					<input
+						accept=".mid,.midi,.musicxml,.xml,.mxl,audio/midi,application/vnd.recordare.musicxml,application/vnd.recordare.musicxml+xml"
+						className="absolute inset-0 cursor-pointer opacity-0"
+						onChange={handleUpload}
+						type="file"
+					/>
 				</label>
+				<button
+					className="pointer-events-auto inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#ffcf70]/40 bg-[#18161f]/80 px-4 font-extrabold text-[#ffcf70] shadow-[0_12px_28px_rgba(0,0,0,0.4)] backdrop-blur-[12px] transition duration-150 ease-out hover:bg-[#ffcf70]/14 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-60 max-md:px-3 max-md:text-[0.85rem]"
+					disabled={scoreState === 'loading'}
+					onClick={handleOpenScore}
+					type="button"
+				>
+					<Music aria-hidden="true" size={16} />
+					<span>{scoreState === 'loading' ? 'Engraving…' : 'Score'}</span>
+				</button>
+			</div>
 
-				<p className="font-mono text-[0.72rem] leading-snug text-[#fff8e7]/58">{engineLabel}</p>
-
-				<label className="grid gap-2 font-mono text-[0.78rem] font-bold text-[#fff8e7]/76 uppercase">
-					<span>Speed</span>
-					<select className="min-h-[42px] rounded-lg border border-[#fff8e7]/18 bg-[#272431] px-3 pr-[34px] text-[#fff8e7]" onChange={event => handleSpeedChange(Number(event.target.value))} value={speed}>
-						<option value={0.75}>0.75x</option>
-						<option value={1}>1x</option>
-						<option value={1.25}>1.25x</option>
-						<option value={1.5}>1.5x</option>
-					</select>
-				</label>
-			</section>
-
-			<section className="grid min-w-0 grid-rows-[auto_minmax(360px,1fr)_auto_auto] gap-[18px] p-[26px] max-md:grid-rows-[auto_340px_auto_auto] max-md:p-3.5">
-				<div className="flex items-center justify-between gap-[18px] rounded-lg border border-[#fff8e7]/14 bg-[#fff8e7]/7 p-[18px_20px] shadow-[0_12px_46px_rgba(0,0,0,0.22)] max-md:flex-col max-md:items-stretch">
-					<div>
-						<p className="mb-[7px] font-mono text-[0.72rem] font-bold tracking-[0.08em] text-[#ffcf70] uppercase">Now playing</p>
-						<h2 className="m-0 text-[clamp(1.5rem,3vw,2.6rem)] leading-[0.95] tracking-normal">{song.fileName}</h2>
-					</div>
-					<div className="flex flex-wrap justify-end gap-2">
-						<span className="rounded-lg bg-[#fff8e7] px-2.5 py-[7px] font-mono text-[0.74rem] font-extrabold text-[#18161f]">
-							{song.performers.length}
-							{' '}
-							parts
-						</span>
-						<span className="rounded-lg bg-[#fff8e7] px-2.5 py-[7px] font-mono text-[0.74rem] font-extrabold text-[#18161f]">
-							{Math.round(song.bpm)}
-							{' '}
-							bpm
-						</span>
-					</div>
-				</div>
-
-				<div className="overflow-hidden rounded-lg border border-[#ffcf70]/18 bg-[#191821] shadow-[inset_0_-40px_80px_rgba(255,207,112,0.08)] [&_canvas]:block">
-					<Canvas camera={{ fov: 42, position: [0, 3.2, 11.4] }} dpr={[1, 1.8]}>
-						<color args={['#191821']} attach="background" />
-						<ambientLight intensity={1.8} />
-						<directionalLight intensity={1.4} position={[4, 6, 4]} />
-						<StageScene
-							activeNotes={activeNotesByPerformer}
-							focusedId={focusedId}
-							isPlaying={isPlaying}
-							onFocus={id => setFocusedId(previous => previous === id ? null : id)}
-							performers={song.performers}
-						/>
-					</Canvas>
-				</div>
-
-				<div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5">
-					{song.performers.map((performer) => {
-						const def = categoryById[performer.category]
-						const muted = focusedId !== null && performer.id !== focusedId
-						return (
-							<button
-								aria-pressed={performer.id === focusedId}
-								className={`grid min-h-[54px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border p-[9px_12px] text-left text-[#fff8e7] transition duration-150 ease-out active:scale-[0.96] ${performer.id === focusedId ? 'border-(--accent) bg-[#ffcf70]/16' : 'border-[#fff8e7]/14 bg-[#fff8e7]/7'} ${muted ? 'opacity-55' : 'opacity-100'}`}
-								key={performer.id}
-								onClick={() => setFocusedId(previous => previous === performer.id ? null : performer.id)}
-								style={{ '--accent': performer.accent } as CSSProperties}
-								type="button"
-							>
-								<span className="grid size-[34px] place-items-center rounded-full bg-(--accent) text-[#211b22]">
-									<Icon height={18} icon={iconByCategory[performer.category]} width={18} />
-								</span>
-								<span className="grid min-w-0 gap-0">
-									<strong className="overflow-hidden text-ellipsis whitespace-nowrap">{def.label}</strong>
-									<span className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[0.66rem] text-[#fff8e7]/60">
-										{performer.tracks.length}
-										{performer.tracks.length === 1 ? ' track' : ' tracks'}
-									</span>
-								</span>
-							</button>
-						)
-					})}
-				</div>
-
-				<section aria-label={focused ? `${focused.name} score` : 'Full arrangement score'} className="grid gap-4 rounded-lg border border-[#fff8e7]/14 bg-[#fff8e7]/7 p-[18px] shadow-[0_12px_46px_rgba(0,0,0,0.22)]">
-					<div className="flex items-end justify-between gap-4 max-md:flex-col max-md:items-stretch">
-						<div>
-							<p className="mb-[7px] font-mono text-[0.72rem] font-bold tracking-[0.08em] text-[#ffcf70] uppercase">{focused ? 'Focused part' : 'Global view'}</p>
-							<h2 className="m-0 text-[clamp(1.5rem,3vw,2.6rem)] leading-[0.95] tracking-normal">{focused ? categoryById[focused.category].label : 'All parts'}</h2>
-							<p className="mt-1 font-mono text-[0.72rem] leading-snug text-[#fff8e7]/60">
-								{focused ? focused.tracks.map(track => track.name).join(' · ') : `${song.performers.length} performers in the full arrangement`}
+			{uploadError
+				? (
+						<div className="pointer-events-none absolute top-20 right-4 z-20 max-w-[420px]">
+							<p className="pointer-events-auto rounded-lg border border-[#ffb3b3]/35 bg-[#3a1f24]/85 px-3 py-2 font-mono text-[0.72rem] font-bold text-[#ffb3b3] shadow-[0_12px_28px_rgba(0,0,0,0.4)] backdrop-blur-[10px]" role="status">
+								{uploadError}
 							</p>
 						</div>
+					)
+				: null}
+			{scoreState === 'error'
+				? (
+						<div className="pointer-events-none absolute top-20 right-4 z-20 max-w-[420px]">
+							<p className="pointer-events-auto rounded-lg border border-[#ffb3b3]/35 bg-[#3a1f24]/85 px-3 py-2 font-mono text-[0.72rem] font-bold text-[#ffb3b3] shadow-[0_12px_28px_rgba(0,0,0,0.4)] backdrop-blur-[10px]" role="status">
+								No engraved score available for this file.
+							</p>
+						</div>
+					)
+				: null}
+
+			<div className="pointer-events-none absolute bottom-4 left-1/2 z-20 w-full max-w-[820px] -translate-x-1/2 px-4 max-md:bottom-2 max-md:px-2">
+				<div className="pointer-events-auto grid gap-2.5 rounded-lg border border-[#fff8e7]/12 bg-[#18161f]/82 px-4 py-3 shadow-[0_22px_60px_rgba(0,0,0,0.5)] backdrop-blur-[16px] max-md:px-3 max-md:py-2.5">
+					<div className="flex items-center gap-2.5 max-md:flex-wrap">
+						<button
+							aria-label={isPlaying ? 'Pause' : 'Play'}
+							className="grid size-[42px] place-items-center rounded-lg border border-transparent bg-[#75d7c4] text-[#18161f] transition duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50"
+							disabled={!isAudioReady}
+							onClick={handlePlayPause}
+							type="button"
+						>
+							{isPlaying ? <Pause size={18} /> : <Play size={18} />}
+						</button>
+						<button
+							aria-label="Reset"
+							className="grid size-[42px] place-items-center rounded-lg border border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7] transition duration-150 ease-out active:scale-[0.96]"
+							onClick={handleReset}
+							type="button"
+						>
+							<RotateCcw size={16} />
+						</button>
+						<button
+							aria-label="Loop"
+							aria-pressed={isLooping}
+							className={`grid size-[42px] place-items-center rounded-lg border transition duration-150 ease-out active:scale-[0.96] ${isLooping ? 'border-[#ffcf70] bg-[#ffcf70]/22 text-[#ffcf70]' : 'border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7]'}`}
+							onClick={handleToggleLoop}
+							type="button"
+						>
+							<Repeat size={16} />
+						</button>
+
+						<div className="grid flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 font-mono text-[0.74rem] text-[#fff8e7]/78">
+							<span>{formatTime(currentTime)}</span>
+							<input
+								aria-label="Seek"
+								className="w-full accent-[#ffcf70]"
+								max={song.duration}
+								min="0"
+								onChange={event => handleSeek(Number(event.target.value))}
+								step="0.01"
+								type="range"
+								value={currentTime}
+							/>
+							<span>{formatTime(song.duration)}</span>
+						</div>
+
+						<select
+							aria-label="Playback speed"
+							className="h-[40px] shrink-0 rounded-lg border border-[#fff8e7]/16 bg-[#272431] px-2 pr-[26px] font-mono text-[0.78rem] text-[#fff8e7]"
+							onChange={event => handleSpeedChange(Number(event.target.value))}
+							value={speed}
+						>
+							<option value={0.75}>0.75x</option>
+							<option value={1}>1x</option>
+							<option value={1.25}>1.25x</option>
+							<option value={1.5}>1.5x</option>
+						</select>
 					</div>
-					{song.scoreSource?.kind === 'musicxml'
-						? <VerovioScore accent={scoreAccent} currentTime={currentTime} scoreSource={song.scoreSource} />
-						: <ScoreRoll accent={scoreAccent} currentTime={currentTime} notes={scoreNotes} />}
-				</section>
-			</section>
+
+					<div className="flex flex-wrap items-center justify-between gap-2 max-md:justify-start">
+						<button
+							aria-pressed={performersPanelOpen}
+							className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[0.72rem] font-bold tracking-[0.05em] uppercase transition duration-150 ease-out active:scale-[0.96] ${performersPanelOpen ? 'border-[#ffcf70]/40 bg-[#ffcf70]/14 text-[#ffcf70]' : 'border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7]'}`}
+							onClick={() => setPerformersPanelOpen(open => !open)}
+							type="button"
+						>
+							<Users aria-hidden="true" size={14} />
+							<span>
+								Performers
+								<span className="ml-1 opacity-60">{song.performers.length}</span>
+							</span>
+						</button>
+						<button
+							aria-pressed={sizesPanelOpen}
+							className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[0.72rem] font-bold tracking-[0.05em] uppercase transition duration-150 ease-out active:scale-[0.96] ${sizesPanelOpen ? 'border-[#ffcf70]/40 bg-[#ffcf70]/14 text-[#ffcf70]' : 'border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7]'}`}
+							onClick={() => setSizesPanelOpen(open => !open)}
+							type="button"
+						>
+							<Scaling aria-hidden="true" size={14} />
+							<span>Sizes</span>
+						</button>
+						<button
+							aria-pressed={editMode}
+							className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[0.72rem] font-bold tracking-[0.05em] uppercase transition duration-150 ease-out active:scale-[0.96] ${editMode ? 'border-[#75d7c4]/55 bg-[#75d7c4]/18 text-[#75d7c4]' : 'border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7]'}`}
+							onClick={() => setEditMode(value => !value)}
+							title="Drag to move characters, scroll to resize"
+							type="button"
+						>
+							<Move aria-hidden="true" size={14} />
+							<span>{editMode ? 'Editing' : 'Edit'}</span>
+						</button>
+						<button
+							aria-pressed={rollPanelOpen}
+							className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[0.72rem] font-bold tracking-[0.05em] uppercase transition duration-150 ease-out active:scale-[0.96] ${rollPanelOpen ? 'border-[#ffcf70]/40 bg-[#ffcf70]/14 text-[#ffcf70]' : 'border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7]'}`}
+							onClick={() => setRollPanelOpen(open => !open)}
+							type="button"
+						>
+							<BarChart3 aria-hidden="true" size={14} />
+							<span>Piano roll</span>
+						</button>
+					</div>
+				</div>
+			</div>
+
+			{performersPanelOpen
+				? (
+						<FloatingPanel
+							align="bottom-left"
+							onClose={() => setPerformersPanelOpen(false)}
+							subtitle={focused ? `Focused on ${categoryById[focused.category].label}` : 'Click to spotlight a performer'}
+							title={`Performers · ${song.performers.length}`}
+						>
+							<div className="grid max-h-[60vh] grid-cols-1 gap-2 overflow-auto pr-1">
+								{song.performers.map((performer) => {
+									const def = categoryById[performer.category]
+									const muted = focusedId !== null && performer.id !== focusedId
+									return (
+										<button
+											aria-pressed={performer.id === focusedId}
+											className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border p-[8px_10px] text-left text-[#fff8e7] transition duration-150 ease-out active:scale-[0.96] ${performer.id === focusedId ? 'border-(--accent) bg-[#ffcf70]/14' : 'border-[#fff8e7]/14 bg-[#fff8e7]/6'} ${muted ? 'opacity-60' : 'opacity-100'}`}
+											key={performer.id}
+											onClick={() => setFocusedId(previous => previous === performer.id ? null : performer.id)}
+											style={{ '--accent': performer.accent } as CSSProperties}
+											type="button"
+										>
+											<span className="grid size-[30px] place-items-center rounded-full bg-(--accent) text-[#211b22]">
+												<Icon height={16} icon={iconByCategory[performer.category]} width={16} />
+											</span>
+											<span className="grid min-w-0 gap-0">
+												<strong className="truncate text-[0.85rem]">{def.label}</strong>
+												<span className="truncate font-mono text-[0.62rem] text-[#fff8e7]/60">
+													{performer.tracks.length}
+													{performer.tracks.length === 1 ? ' track' : ' tracks'}
+												</span>
+											</span>
+										</button>
+									)
+								})}
+							</div>
+						</FloatingPanel>
+					)
+				: null}
+
+			{sizesPanelOpen
+				? (
+						<FloatingPanel
+							align="top-left"
+							onClose={() => setSizesPanelOpen(false)}
+							subtitle={`${minPerformerScale.toFixed(1)}× – ${maxPerformerScale.toFixed(1)}×`}
+							title="Character sizes"
+						>
+							<div className="grid max-h-[60vh] grid-cols-1 gap-3 overflow-auto pr-1">
+								{song.performers.map((performer) => {
+									const def = categoryById[performer.category]
+									const scale = clampScale(performerScales[performer.id] ?? 1)
+									return (
+										<div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5" key={performer.id} style={{ '--accent': performer.accent } as CSSProperties}>
+											<span className="grid size-[28px] place-items-center rounded-full bg-(--accent) text-[#211b22]">
+												<Icon height={14} icon={iconByCategory[performer.category]} width={14} />
+											</span>
+											<label className="grid min-w-0 gap-1">
+												<span className="truncate text-[0.78rem] font-bold">{def.label}</span>
+												<input
+													aria-label={`${def.label} size`}
+													className="w-full accent-(--accent)"
+													max={maxPerformerScale}
+													min={minPerformerScale}
+													onChange={event => handleScaleChange(performer.id, Number(event.target.value))}
+													step="0.05"
+													type="range"
+													value={scale}
+												/>
+											</label>
+											<span className="min-w-[3ch] text-right font-mono text-[0.7rem] text-[#fff8e7]/60">
+												{scale.toFixed(2)}
+												x
+											</span>
+										</div>
+									)
+								})}
+								<div className="mt-1 grid grid-cols-2 gap-2">
+									<button
+										className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#fff8e7]/16 bg-[#fff8e7]/8 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#fff8e7] uppercase transition duration-150 ease-out hover:bg-[#fff8e7]/14 active:scale-[0.96]"
+										onClick={handleResetScales}
+										type="button"
+									>
+										<RotateCcw aria-hidden="true" size={14} />
+										<span>Reset sizes</span>
+									</button>
+									<button
+										className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#fff8e7]/16 bg-[#fff8e7]/8 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#fff8e7] uppercase transition duration-150 ease-out hover:bg-[#fff8e7]/14 active:scale-[0.96]"
+										onClick={handleResetOffsets}
+										type="button"
+									>
+										<RotateCcw aria-hidden="true" size={14} />
+										<span>Reset positions</span>
+									</button>
+								</div>
+							</div>
+						</FloatingPanel>
+					)
+				: null}
+
+			{rollPanelOpen
+				? (
+						<FloatingPanel
+							align="bottom-right"
+							onClose={() => setRollPanelOpen(false)}
+							subtitle={focused ? `Focused on ${categoryById[focused.category].label}` : `${song.performers.length} performers`}
+							title="Piano roll"
+						>
+							<div className="h-[260px] overflow-hidden rounded-lg bg-[#16141d] shadow-[inset_0_0_0_1px_rgba(255,248,231,0.04)] max-md:h-[200px]">
+								<PianoRoll currentTime={currentTime} duration={song.duration} tracks={pianoRollTracks} />
+							</div>
+						</FloatingPanel>
+					)
+				: null}
+
+			{scoreState === 'open' && song.scoreSource
+				? (
+						<ScoreModal
+							onClose={handleCloseScore}
+							subtitle={focused ? `Focused on ${categoryById[focused.category].label}` : `${song.performers.length} performers`}
+							title={song.fileName}
+						>
+							<VerovioScore
+								accent={scoreAccent}
+								currentTime={currentTime}
+								focusedCategory={focused?.category ?? null}
+								scoreSource={song.scoreSource}
+							/>
+						</ScoreModal>
+					)
+				: null}
 		</main>
 	)
 }
 
 function StageScene({
 	activeNotes,
+	editMode,
 	focusedId,
 	isPlaying,
+	offsets,
 	onFocus,
+	onOffsetChange,
+	onScaleChange,
 	performers,
+	scales,
 }: {
 	activeNotes: Map<string, number>
+	editMode: boolean
 	focusedId: null | string
 	isPlaying: boolean
+	offsets: Record<string, PerformerOffset>
 	onFocus: (id: string) => void
+	onOffsetChange: (id: string, x: number, y: number) => void
+	onScaleChange: (id: string, value: number) => void
 	performers: Performer[]
+	scales: Record<string, number>
 }) {
-	const placements = useMemo(() => layoutOrchestra(performers), [performers])
-	const floorRadius = useMemo(() => stageRadius(placements), [placements])
+	const size = useThree(state => state.size)
+	const layoutWidth = useMemo(() => {
+		const aspect = size.height > 0 ? size.width / size.height : 16 / 9
+		return Math.min(18, Math.max(8, 14 * (aspect / (16 / 9))))
+	}, [size.height, size.width])
+	const placements = useMemo(() => layoutOrchestra(performers, layoutWidth), [layoutWidth, performers])
+	const stageReach = useMemo(() => stageRadius(placements), [placements])
 
 	return (
 		<>
-			<DirectorCamera
-				activeNotes={activeNotes}
-				focusedId={focusedId}
-				isPlaying={isPlaying}
-				placements={placements}
-				stageReach={floorRadius}
-			/>
+			{isPlaying || focusedId
+				? (
+						<DirectorCamera
+							activeNotes={activeNotes}
+							focusedId={focusedId}
+							isPlaying={isPlaying}
+							placements={placements}
+							stageReach={stageReach}
+						/>
+					)
+				: <BreathCamera basePosition={[0, 3.6, 12.6]} baseTarget={[0, 0.15, -1.8]} />}
+			<StageEnvironment isPlaying={isPlaying} />
 			<Stage
 				activeNotes={activeNotes}
-				floorRadius={floorRadius}
+				editMode={editMode}
 				focusedId={focusedId}
 				isPlaying={isPlaying}
+				offsets={offsets}
 				onFocus={onFocus}
+				onOffsetChange={onOffsetChange}
+				onScaleChange={onScaleChange}
 				performers={performers}
 				placements={placements}
+				scales={scales}
 			/>
 		</>
 	)
@@ -520,63 +896,63 @@ function StageScene({
 
 function Stage({
 	activeNotes,
-	floorRadius,
+	editMode,
 	focusedId,
 	isPlaying,
+	offsets,
 	onFocus,
+	onOffsetChange,
+	onScaleChange,
 	performers,
 	placements,
+	scales,
 }: {
 	activeNotes: Map<string, number>
-	floorRadius: number
+	editMode: boolean
 	focusedId: null | string
 	isPlaying: boolean
+	offsets: Record<string, PerformerOffset>
 	onFocus: (id: string) => void
+	onOffsetChange: (id: string, x: number, y: number) => void
+	onScaleChange: (id: string, value: number) => void
 	performers: Performer[]
 	placements: Map<string, StagePlacement>
+	scales: Record<string, number>
 }) {
 	return (
 		<group>
-			<mesh position={[0, -1.35, 0.15]} rotation={[-Math.PI / 2, 0, 0]}>
-				<circleGeometry args={[floorRadius, 72]} />
-				<meshStandardMaterial color="#292534" roughness={0.85} />
-			</mesh>
-			<mesh position={[0, -1.34, 2.4]} rotation={[-Math.PI / 2, 0, 0]}>
-				<ringGeometry args={[0.2, 0.42, 32]} />
-				<meshStandardMaterial color="#fff0ad" emissive="#ffcf70" emissiveIntensity={0.35} roughness={0.6} />
-			</mesh>
 			{performers.map((performer) => {
 				const placement = placements.get(performer.id)
 				if (!placement) {
 					return null
 				}
 
-				const [x, y, z] = placement.position
-				const liftAboveFloor = y + 0.62
-				const riserHeight = Math.max(liftAboveFloor - 0.08, 0)
 				const muted = focusedId !== null && performer.id !== focusedId
+				const scale = clampScale(scales[performer.id] ?? 1)
+				const offset = offsets[performer.id] ?? { x: 0, y: 0 }
+				const finalPosition: [number, number, number] = [
+					placement.position[0] + offset.x,
+					placement.position[1] + offset.y,
+					placement.position[2],
+				]
 
 				return (
-					<group key={performer.id}>
-						{riserHeight > 0.02
-							? (
-									<mesh position={[x, -1.35 + riserHeight / 2, z - 0.32]}>
-										<boxGeometry args={[1.05, riserHeight, 0.7]} />
-										<meshStandardMaterial color="#332c44" opacity={muted ? 0.28 : 1} roughness={0.95} transparent={muted} />
-									</mesh>
-								)
-							: null}
-						<PerformerModel
-							active={activeNotes.get(performer.id) ?? 0}
-							focused={performer.id === focusedId}
-							isPlaying={isPlaying}
-							muted={muted}
-							onFocus={() => onFocus(performer.id)}
-							performer={performer}
-							position={placement.position}
-							rotationY={placement.rotationY}
-						/>
-					</group>
+					<PerformerModel
+						active={activeNotes.get(performer.id) ?? 0}
+						editMode={editMode}
+						isPlaying={isPlaying}
+						key={performer.id}
+						muted={muted}
+						onFocus={() => onFocus(performer.id)}
+						onMove={(x, y) => onOffsetChange(performer.id, x, y)}
+						onResize={value => onScaleChange(performer.id, value)}
+						performer={performer}
+						position={finalPosition}
+						renderOrder={placement.renderOrder}
+						rotationY={placement.rotationY}
+						scale={scale}
+						startOffset={offset}
+					/>
 				)
 			})}
 		</group>
@@ -585,25 +961,47 @@ function Stage({
 
 function PerformerModel({
 	active,
-	focused,
+	editMode,
 	isPlaying,
 	muted,
 	onFocus,
+	onMove,
+	onResize,
 	performer,
 	position,
+	renderOrder,
 	rotationY,
+	scale,
+	startOffset,
 }: {
 	active: number
-	focused: boolean
+	editMode: boolean
 	isPlaying: boolean
 	muted: boolean
 	onFocus: () => void
+	onMove: (x: number, y: number) => void
+	onResize: (value: number) => void
 	performer: Performer
 	position: [number, number, number]
+	renderOrder: number
 	rotationY: number
+	scale: number
+	startOffset: PerformerOffset
 }) {
 	const groupRef = useRef<Group>(null)
 	const { texture: avatarTexture } = useCharacterArtwork(performer)
+	const camera = useThree(state => state.camera)
+	const gl = useThree(state => state.gl)
+	const performerDepth = position[2]
+
+	// Refs so the window listeners always see the latest values without
+	// having to re-attach on every render.
+	const editModeRef = useRef(editMode)
+	const scaleRef = useRef(scale)
+	const startOffsetRef = useRef(startOffset)
+	editModeRef.current = editMode
+	scaleRef.current = scale
+	startOffsetRef.current = startOffset
 
 	useFrame(({ clock }) => {
 		if (!groupRef.current) {
@@ -613,26 +1011,72 @@ function PerformerModel({
 		const sway = isActive ? Math.sin(clock.elapsedTime * 1.8 + position[0]) * 0.1 : 0
 		const bounce = isActive ? 1 + Math.sin(clock.elapsedTime * 16) * 0.06 + 0.08 : 1
 		groupRef.current.rotation.z = sway
-		groupRef.current.scale.set(bounce, isActive ? 1 / bounce : 1, 1)
+		const squashY = isActive ? 1 / bounce : 1
+		groupRef.current.scale.set(scale * bounce, scale * squashY, 1)
 	})
 
+	const handlePointerDown = useCallback((event: { clientX: number, clientY: number, stopPropagation: () => void }) => {
+		event.stopPropagation()
+
+		if (!editModeRef.current) {
+			onFocus()
+			return
+		}
+
+		const canvas = gl.domElement
+		const start = pointerToWorld(camera, canvas, event.clientX, event.clientY, performerDepth)
+		if (!start) {
+			return
+		}
+		const offsetAtStart = { ...startOffsetRef.current }
+		let didMove = false
+
+		const handleMove = (moveEvent: PointerEvent) => {
+			const current = pointerToWorld(camera, canvas, moveEvent.clientX, moveEvent.clientY, performerDepth)
+			if (!current) {
+				return
+			}
+			didMove = true
+			onMove(
+				offsetAtStart.x + (current.x - start.x),
+				offsetAtStart.y + (current.y - start.y),
+			)
+		}
+
+		const handleUp = () => {
+			window.removeEventListener('pointermove', handleMove)
+			window.removeEventListener('pointerup', handleUp)
+			window.removeEventListener('pointercancel', handleUp)
+			// Treat a press without drag as a focus click, mirroring the
+			// behavior outside edit mode for discoverability.
+			if (!didMove) {
+				onFocus()
+			}
+		}
+
+		window.addEventListener('pointermove', handleMove)
+		window.addEventListener('pointerup', handleUp)
+		window.addEventListener('pointercancel', handleUp)
+	}, [camera, gl, onFocus, onMove, performerDepth])
+
+	const handleWheel = useCallback((event: { deltaY: number, stopPropagation: () => void }) => {
+		if (!editModeRef.current) {
+			return
+		}
+		event.stopPropagation()
+		const factor = event.deltaY > 0 ? 1 / 1.06 : 1.06
+		onResize(clampScale(scaleRef.current * factor))
+	}, [onResize])
+
 	return (
-		<group onClick={onFocus} position={position} rotation={[0, rotationY, 0]}>
-			{focused
-				? (
-						<mesh position={[0, -0.6, -0.04]} rotation={[-Math.PI / 2, 0, 0]}>
-							<circleGeometry args={[0.74, 40]} />
-							<meshStandardMaterial color="#fff0ad" opacity={0.42} roughness={0.8} transparent />
-						</mesh>
-					)
-				: null}
+		<group position={position} rotation={[0, rotationY, 0]}>
 			<group ref={groupRef}>
-				<mesh>
-					<planeGeometry args={[1.4, 1.4]} />
-					<meshBasicMaterial alphaTest={0.05} map={avatarTexture} opacity={muted ? 0.36 : 1} transparent />
+				<mesh onPointerDown={handlePointerDown} onWheel={handleWheel} renderOrder={renderOrder}>
+					<planeGeometry args={[1.7, 1.7]} />
+					<meshBasicMaterial alphaTest={0.05} depthWrite={false} map={avatarTexture} opacity={muted ? 0.36 : 1} transparent />
 				</mesh>
 			</group>
-			<FloatingNotes accent={performer.accent} active={muted ? 0 : active} isPlaying={isPlaying} />
+			<FloatingNotes accent={performer.accent} active={muted ? 0 : active} isPlaying={isPlaying} renderOrder={renderOrder + 1} />
 		</group>
 	)
 }
@@ -775,90 +1219,6 @@ function roundRect(context: CanvasRenderingContext2D, x: number, y: number, widt
 	context.arcTo(x, y + height, x, y, radius)
 	context.arcTo(x, y, x + width, y, radius)
 	context.closePath()
-}
-
-function ScoreRoll({ accent, currentTime, notes }: { accent: string, currentTime: number, notes: NoteEvent[] }) {
-	const canvasRef = useRef<HTMLCanvasElement>(null)
-
-	useEffect(() => {
-		const canvas = canvasRef.current
-		const context = canvas?.getContext('2d')
-		if (!canvas || !context) {
-			return
-		}
-
-		const rect = canvas.getBoundingClientRect()
-		const scale = window.devicePixelRatio || 1
-		canvas.width = rect.width * scale
-		canvas.height = rect.height * scale
-		context.scale(scale, scale)
-		drawScore(context, rect.width, rect.height, notes, currentTime, accent)
-	}, [accent, currentTime, notes])
-
-	return <canvas aria-label="Scrolling staff notation" className="block h-[188px] w-full rounded-lg border-0 shadow-[inset_0_0_0_1px_rgba(43,38,51,0.1)] max-md:h-40" ref={canvasRef} />
-}
-
-function drawScore(
-	context: CanvasRenderingContext2D,
-	width: number,
-	height: number,
-	notes: NoteEvent[],
-	currentTime: number,
-	accent: string,
-) {
-	context.clearRect(0, 0, width, height)
-	context.fillStyle = '#fff8e7'
-	context.fillRect(0, 0, width, height)
-
-	const staffTop = height * 0.32
-	const lineGap = 15
-
-	context.strokeStyle = '#5e554c'
-	context.lineWidth = 1
-	for (let line = 0; line < 5; line += 1) {
-		const y = staffTop + line * lineGap
-		context.beginPath()
-		context.moveTo(24, y)
-		context.lineTo(width - 24, y)
-		context.stroke()
-	}
-
-	context.fillStyle = '#2b2633'
-	context.font = '700 18px Georgia, serif'
-	context.fillText('𝄞', 34, staffTop + lineGap * 3.2)
-
-	const secondsVisible = 7
-	const lead = 1.2
-	const start = Math.max(0, currentTime - lead)
-	const xForTime = (time: number) => 74 + ((time - start) / secondsVisible) * (width - 120)
-
-	for (const note of notes) {
-		if (note.time < start - 1 || note.time > start + secondsVisible + 1) {
-			continue
-		}
-
-		const x = xForTime(note.time)
-		const y = staffTop + lineGap * 4 - ((note.midi - 60) * lineGap) / 2
-		const isActive = currentTime >= note.time && currentTime <= note.time + note.duration
-
-		context.fillStyle = isActive ? accent : '#2b2633'
-		context.beginPath()
-		context.ellipse(x, y, isActive ? 10 : 8, 6, -0.35, 0, Math.PI * 2)
-		context.fill()
-		context.strokeStyle = context.fillStyle
-		context.beginPath()
-		context.moveTo(x + 7, y - 2)
-		context.lineTo(x + 7, y - 42)
-		context.stroke()
-	}
-
-	const playheadX = xForTime(currentTime)
-	context.strokeStyle = '#e14f4f'
-	context.lineWidth = 2
-	context.beginPath()
-	context.moveTo(playheadX, 18)
-	context.lineTo(playheadX, height - 18)
-	context.stroke()
 }
 
 function formatTime(seconds: number) {

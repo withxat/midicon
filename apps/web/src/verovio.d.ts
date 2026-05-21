@@ -6,6 +6,7 @@ declare module 'verovio/esm' {
 	export class VerovioToolkit {
 		constructor(module: unknown)
 		destroy(): void
+		getMEI(options?: Record<string, unknown>): string
 		getPageCount(): number
 		getVersion(): string
 		loadData(data: string): boolean
