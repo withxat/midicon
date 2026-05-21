@@ -1,0 +1,11 @@
+A320U.sf2 — Signal Factory Sound
+
+Midicon uses the same default SoundFont as ryohey/signal:
+https://cdn.jsdelivr.net/gh/ryohey/signal@4569a31/public/A320U.sf2
+
+The file is commonly known as A320U.sf2. Signal labels it "Signal Factory Sound".
+Upstream packaging and license notes may appear in the signal repo and in
+denemo/denemo (soundfonts/A320U-license.txt). Attribute the soundfont author when
+you ship a product that bundles or redistributes the file.
+
+GeneralUser GS is not used as the default bank in Midicon.

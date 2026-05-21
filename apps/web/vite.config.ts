@@ -7,6 +7,9 @@ export default defineConfig({
 		rollupOptions: {
 			output: {
 				manualChunks(id) {
+					if (id.includes('spessasynth_')) {
+						return 'audio'
+					}
 					if (id.includes('/tone/') || id.includes('@tonejs')) {
 						return 'audio'
 					}

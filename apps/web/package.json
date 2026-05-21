@@ -8,7 +8,8 @@
 		"build": "tsc --noEmit && vite build",
 		"typecheck": "tsc --noEmit",
 		"lint": "eslint",
-		"test": "tsc --noEmit"
+		"test": "tsc --noEmit",
+		"soundfont:fetch": "node scripts/fetch-soundfont.mjs"
 	},
 	"dependencies": {
 		"@iconify-icons/game-icons": "^1.2.1",
@@ -18,6 +19,8 @@
 		"@tonejs/midi": "^2.0.28",
 		"react": "catalog:react",
 		"react-dom": "catalog:react",
+		"spessasynth_core": "4.3.3",
+		"spessasynth_lib": "4.3.3",
 		"three": "^0.184.0",
 		"tone": "^15.1.22",
 		"ui": "workspace:*"

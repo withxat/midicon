@@ -138,6 +138,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Large SoundFont assets (fetch with pnpm soundfont:fetch)
+apps/web/public/soundfonts/*.sf2
+apps/web/public/soundfonts/*.sf3
+
 # macOS
 .DS_Store
 
