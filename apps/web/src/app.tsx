@@ -41,6 +41,7 @@ import { FloatingNotes } from './stage/floating-notes'
 import { layoutOrchestra, stageRadius } from './stage/orchestra-layout'
 import { songFromMusicXml } from './verovio-musicxml'
 import { VerovioScore } from './verovio-score'
+import { convertMidiToMusicXml } from './webmscore-convert'
 
 const iconByCategory: Record<InstrumentCategory, IconifyIcon> = {
 	bass: bassIcon,
@@ -264,6 +265,16 @@ export function App() {
 				const midiBinary = await file.arrayBuffer()
 				const midi = new Midi(midiBinary)
 				parsed = songFromMidi(midi, file.name, midiBinary)
+				const musicXml = await convertMidiToMusicXml(midiBinary)
+				if (musicXml) {
+					parsed = {
+						...parsed,
+						scoreSource: {
+							kind: 'musicxml',
+							source: musicXml,
+						},
+					}
+				}
 			}
 
 			engineRef.current?.pause()
