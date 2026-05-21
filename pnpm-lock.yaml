@@ -112,6 +112,9 @@ importers:
       ui:
         specifier: workspace:*
         version: link:../../packages/ui
+      verovio:
+        specifier: ^6.2.0
+        version: 6.2.0
     devDependencies:
       '@tailwindcss/vite':
         specifier: catalog:tailwind
@@ -2907,6 +2910,10 @@ packages:
     peerDependencies:
       react: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
       react-dom: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
+
+  verovio@6.2.0:
+    resolution: {integrity: sha512-yYU4CAik+ln4tdDOSLJPypQ24fiRsJtNgmgobsPnrSQYxesjwLrrPvth4mumeBRh3S20VERw9+GPXpRyhT1R4A==}
+    engines: {node: '>= 14.18.0'}
 
   victory-vendor@36.9.2:
     resolution: {integrity: sha512-PnpQQMuxlwYdocC8fIJqVXvkeViHYzotI+NJrCuav0ZYFoq912ZHBk3mCeuj+5/VpodOjPe1z0Fk2ihgzlXqjQ==}
@@ -5859,6 +5866,8 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
       - '@types/react-dom'
+
+  verovio@6.2.0: {}
 
   victory-vendor@36.9.2:
     dependencies:

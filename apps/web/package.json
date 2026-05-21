@@ -23,7 +23,8 @@
 		"spessasynth_lib": "4.3.3",
 		"three": "^0.184.0",
 		"tone": "^15.1.22",
-		"ui": "workspace:*"
+		"ui": "workspace:*",
+		"verovio": "^6.2.0"
 	},
 	"devDependencies": {
 		"@tailwindcss/vite": "catalog:tailwind",

@@ -39,6 +39,8 @@ import {
 import { DirectorCamera } from './stage/director-camera'
 import { FloatingNotes } from './stage/floating-notes'
 import { layoutOrchestra, stageRadius } from './stage/orchestra-layout'
+import { songFromMusicXml } from './verovio-musicxml'
+import { VerovioScore } from './verovio-score'
 
 const iconByCategory: Record<InstrumentCategory, IconifyIcon> = {
 	bass: bassIcon,
@@ -244,15 +246,25 @@ export function App() {
 			return
 		}
 		if (file.size > maxMidiFileSize) {
-			setUploadError('Please choose a MIDI file under 5 MB.')
+			setUploadError('Please choose a MIDI or MusicXML file under 5 MB.')
 			event.target.value = ''
 			return
 		}
 
 		try {
-			const midiBinary = await file.arrayBuffer()
-			const midi = new Midi(midiBinary)
-			const parsed = songFromMidi(midi, file.name, midiBinary)
+			const extension = file.name.split('.').pop()?.toLowerCase()
+			let parsed: Song
+			if (extension === 'musicxml' || extension === 'xml') {
+				parsed = await songFromMusicXml(await file.text(), file.name)
+			}
+			else if (extension === 'mxl') {
+				parsed = await songFromMusicXml(await file.arrayBuffer(), file.name)
+			}
+			else {
+				const midiBinary = await file.arrayBuffer()
+				const midi = new Midi(midiBinary)
+				parsed = songFromMidi(midi, file.name, midiBinary)
+			}
 
 			engineRef.current?.pause()
 			stopAnimationLoop()
@@ -264,7 +276,7 @@ export function App() {
 			event.target.value = ''
 		}
 		catch {
-			setUploadError('That file could not be parsed as MIDI.')
+			setUploadError('That file could not be parsed as MIDI or MusicXML.')
 			event.target.value = ''
 		}
 	}, [stopAnimationLoop])
@@ -323,8 +335,8 @@ export function App() {
 
 				<label className="relative inline-flex min-h-12 w-full items-center justify-center gap-2.5 overflow-hidden rounded-lg bg-[#ffcf70] px-4 font-extrabold text-[#201a22] shadow-[0_10px_28px_rgba(255,207,112,0.24)] transition duration-150 ease-out active:scale-[0.96]">
 					<Upload aria-hidden="true" size={18} />
-					<span>Upload MIDI</span>
-					<input accept=".mid,.midi,audio/midi" className="absolute inset-0 cursor-pointer opacity-0" onChange={handleUpload} type="file" />
+					<span>Upload score</span>
+					<input accept=".mid,.midi,.musicxml,.xml,.mxl,audio/midi,application/vnd.recordare.musicxml,application/vnd.recordare.musicxml+xml" className="absolute inset-0 cursor-pointer opacity-0" onChange={handleUpload} type="file" />
 				</label>
 				{uploadError
 					? <p className="-mt-3 font-mono text-[0.74rem] leading-snug font-bold text-[#ffb3b3]" role="status">{uploadError}</p>
@@ -448,7 +460,9 @@ export function App() {
 							</p>
 						</div>
 					</div>
-					<ScoreRoll accent={scoreAccent} currentTime={currentTime} notes={scoreNotes} />
+					{song.scoreSource?.kind === 'musicxml'
+						? <VerovioScore accent={scoreAccent} currentTime={currentTime} scoreSource={song.scoreSource} />
+						: <ScoreRoll accent={scoreAccent} currentTime={currentTime} notes={scoreNotes} />}
 				</section>
 			</section>
 		</main>

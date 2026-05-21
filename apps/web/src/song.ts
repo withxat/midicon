@@ -38,6 +38,10 @@ export interface Song {
 	/** Raw file bytes; SpessaSynth Sequencer plays this for full track fidelity. */
 	midiBinary?: ArrayBuffer
 	performers: Performer[]
+	scoreSource?: {
+		kind: 'musicxml'
+		source: ArrayBuffer | string
+	}
 }
 
 export const palette = ['#ffcf70', '#ff8da1', '#75d7c4', '#a8b8ff', '#f59ee6']
