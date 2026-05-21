@@ -18,6 +18,11 @@ interface PlaybackEntry extends TimemapEntry {
 	notesOn: string[]
 }
 
+interface MeasureEntry {
+	measureId: string
+	tstamp: number
+}
+
 interface HighlightedElement {
 	domid: string
 	fill: null | string
@@ -36,6 +41,7 @@ export function VerovioScore({
 	const containerRef = useRef<HTMLDivElement>(null)
 	const eventsRef = useRef<PlaybackEntry[]>([])
 	const highlightedRef = useRef<HighlightedElement[]>([])
+	const measuresRef = useRef<MeasureEntry[]>([])
 	const [renderState, setRenderState] = useState<'error' | 'loading' | 'ready'>('loading')
 
 	const highlightStyle = useMemo(() => ({
@@ -79,16 +85,22 @@ export function VerovioScore({
 					}
 
 					const rect = scoreContainer.getBoundingClientRect()
+					const measureCount = Math.max(estimateMeasureCount(toolkit.renderToTimemap({
+						includeMeasures: true,
+						includeRests: true,
+					}) as TimemapEntry[]), 1)
+					const scoreWidth = Math.max(rect.width * 1.35, measureCount * 210)
+					const scale = 50
 					toolkit.setOptions({
 						adjustPageHeight: true,
-						breaks: 'smart',
+						breaks: 'none',
 						font: 'Bravura',
 						footer: 'none',
-						pageHeight: Math.max(320, rect.height) * 2,
-						pageWidth: Math.max(320, rect.width) * 2,
-						scale: 50,
-						spacingLinear: 0.25,
-						spacingNonLinear: 0.6,
+						pageHeight: (Math.max(240, rect.height) * 100) / scale,
+						pageWidth: (scoreWidth * 100) / scale,
+						scale,
+						spacingLinear: 0.05,
+						spacingNonLinear: 0.95,
 					})
 					toolkit.redoLayout({ resetCache: false })
 
@@ -104,10 +116,14 @@ export function VerovioScore({
 
 					scoreContainer.innerHTML = pages.map((svg, index) => `<div class="verovio-score-page" data-page="${index + 1}">${svg}</div>`).join('')
 					for (const svg of scoreContainer.querySelectorAll('svg')) {
-						svg.setAttribute('width', '100%')
-						svg.removeAttribute('height')
+						const width = svg.getAttribute('width')
+						const height = svg.getAttribute('height')
+						if (width && height) {
+							svg.setAttribute('viewBox', `0 0 ${width.replace('px', '')} ${height.replace('px', '')}`)
+						}
 					}
 					eventsRef.current = buildPlaybackEntries(timemap)
+					measuresRef.current = buildMeasureEntries(timemap)
 					highlightedRef.current = []
 					setRenderState('ready')
 				}
@@ -120,6 +136,7 @@ export function VerovioScore({
 				if (!cancelled) {
 					scoreContainer.innerHTML = ''
 					eventsRef.current = []
+					measuresRef.current = []
 					highlightedRef.current = []
 					setRenderState('error')
 				}
@@ -134,6 +151,7 @@ export function VerovioScore({
 			toolkit?.destroy()
 			restoreHighlighted(scoreContainer, highlightedRef.current)
 			eventsRef.current = []
+			measuresRef.current = []
 			highlightedRef.current = []
 			scoreContainer.innerHTML = ''
 		}
@@ -142,6 +160,7 @@ export function VerovioScore({
 	useEffect(() => {
 		const container = containerRef.current
 		const events = eventsRef.current
+		const measures = measuresRef.current
 		if (!container || events.length === 0) {
 			return
 		}
@@ -170,12 +189,13 @@ export function VerovioScore({
 		}
 
 		const target = event.notesOn[0] ? findScoreElement(container, event.notesOn[0]) : null
-		target?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+		const fallbackTarget = measures.length ? findScoreElement(container, measureAtTime(measures, currentTime * 1000).measureId) : null
+		scrollHorizontallyTo(container, target ?? fallbackTarget)
 	}, [accent, currentTime])
 
 	return (
 		<div className="relative overflow-hidden rounded-lg bg-[#fff8e7] shadow-[inset_0_0_0_1px_rgba(43,38,51,0.1)]" style={highlightStyle}>
-			<div className="h-[260px] overflow-auto px-3 py-4 max-md:h-52 [&_.verovio-score-page]:mx-auto [&_.verovio-score-page]:mb-4 [&_.verovio-score-page]:max-w-[980px] [&_svg]:block [&_svg]:h-auto" ref={containerRef} />
+			<div className="h-[220px] overflow-x-auto overflow-y-hidden px-3 py-4 max-md:h-48 [&_.verovio-score-page]:inline-block [&_.verovio-score-page]:align-top [&_svg]:block [&_svg]:h-[180px] [&_svg]:max-w-none [&_svg]:shrink-0 max-md:[&_svg]:h-[148px]" ref={containerRef} />
 			{renderState === 'loading'
 				? <div className="pointer-events-none absolute inset-0 grid place-items-center bg-[#fff8e7] font-mono text-[0.75rem] font-bold text-[#2b2633]/72 uppercase">Engraving score…</div>
 				: null}
@@ -184,6 +204,10 @@ export function VerovioScore({
 				: null}
 		</div>
 	)
+}
+
+function estimateMeasureCount(timemap: TimemapEntry[]): number {
+	return timemap.filter(entry => entry.measureOn).length
 }
 
 function buildPlaybackEntries(timemap: TimemapEntry[]): PlaybackEntry[] {
@@ -204,6 +228,19 @@ function buildPlaybackEntries(timemap: TimemapEntry[]): PlaybackEntry[] {
 	return entries
 }
 
+function buildMeasureEntries(timemap: TimemapEntry[]): MeasureEntry[] {
+	const measures: MeasureEntry[] = []
+	for (const entry of timemap) {
+		if (entry.measureOn) {
+			measures.push({
+				measureId: entry.measureOn,
+				tstamp: entry.tstamp,
+			})
+		}
+	}
+	return measures
+}
+
 function eventAtTime(events: PlaybackEntry[], timestamp: number): PlaybackEntry {
 	let match = events[0]!
 	for (const event of events) {
@@ -213,6 +250,33 @@ function eventAtTime(events: PlaybackEntry[], timestamp: number): PlaybackEntry 
 		match = event
 	}
 	return match
+}
+
+function measureAtTime(measures: MeasureEntry[], timestamp: number): MeasureEntry {
+	let match = measures[0]!
+	for (const measure of measures) {
+		if (measure.tstamp > timestamp) {
+			break
+		}
+		match = measure
+	}
+	return match
+}
+
+function scrollHorizontallyTo(container: HTMLElement, target: Element | null) {
+	if (!target) {
+		return
+	}
+
+	const containerRect = container.getBoundingClientRect()
+	const targetRect = target.getBoundingClientRect()
+	const targetCenter = targetRect.left + targetRect.width / 2
+	const containerCenter = containerRect.left + containerRect.width * 0.42
+
+	container.scrollTo({
+		behavior: 'smooth',
+		left: Math.max(0, container.scrollLeft + targetCenter - containerCenter),
+	})
 }
 
 function restoreHighlighted(container: HTMLElement, highlighted: HighlightedElement[]) {
