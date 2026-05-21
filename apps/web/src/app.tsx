@@ -1,6 +1,6 @@
 import type { IconifyIcon } from '@iconify/types'
 import type { ChangeEvent, CSSProperties } from 'react'
-import type { Group } from 'three'
+import type { Group, OrthographicCamera as OrthographicCameraImpl } from 'three'
 
 import type { AudioEngine } from './audio/types'
 import type { InstrumentCategory } from './instrument-category'
@@ -23,7 +23,7 @@ import xylophoneIcon from '@iconify-icons/game-icons/xylophone'
 import { Icon } from '@iconify/react/offline'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Midi } from '@tonejs/midi'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CanvasTexture, Plane, Raycaster, Vector2, Vector3 } from 'three'
 import { BarChart3, Move, Music, Pause, Play, Repeat, RotateCcw, Scaling, Upload, Users } from 'ui/icons'
 
@@ -37,11 +37,14 @@ import {
 	maxMidiFileSize,
 	midiToNoteName,
 } from './song'
-import { BreathCamera } from './stage/breath-camera'
-import { DirectorCamera } from './stage/director-camera'
+import { TheaterBackground } from './stage/background-plane'
 import { FloatingNotes } from './stage/floating-notes'
-import { layoutOrchestra, stageRadius } from './stage/orchestra-layout'
-import { StageEnvironment } from './stage/stage-environment'
+import {
+	characterBaseHeight,
+	characterBaseWidth,
+	computeWorldViewport,
+	layoutOrchestra,
+} from './stage/orchestra-layout'
 import { scoreSourceFromMusicXml, songFromMusicXml } from './verovio-musicxml'
 import { VerovioScore } from './verovio-score'
 import { convertMidiToMusicXml } from './webmscore-convert'
@@ -516,9 +519,12 @@ export function App() {
 	return (
 		<main className="relative h-dvh w-screen overflow-hidden bg-transparent text-[#fff8e7]">
 			<div className={`absolute inset-0 [&_canvas]:block ${editMode ? '[&_canvas]:cursor-grab [&_canvas:active]:cursor-grabbing' : ''}`}>
-				<Canvas camera={{ fov: 42, position: [0, 3.2, 11.4] }} dpr={[1, 1.8]} gl={{ alpha: true }}>
-					<ambientLight intensity={1.8} />
-					<directionalLight intensity={1.4} position={[4, 6, 4]} />
+				<Canvas
+					camera={{ far: 100, near: 0.1, position: [0, 0, 50], zoom: 100 }}
+					dpr={[1, 1.8]}
+					gl={{ alpha: true }}
+					orthographic
+				>
 					<StageScene
 						activeNotes={activeNotesByPerformer}
 						editMode={editMode}
@@ -855,28 +861,12 @@ function StageScene({
 	performers: Performer[]
 	scales: Record<string, number>
 }) {
-	const size = useThree(state => state.size)
-	const layoutWidth = useMemo(() => {
-		const aspect = size.height > 0 ? size.width / size.height : 16 / 9
-		return Math.min(18, Math.max(8, 14 * (aspect / (16 / 9))))
-	}, [size.height, size.width])
-	const placements = useMemo(() => layoutOrchestra(performers, layoutWidth), [layoutWidth, performers])
-	const stageReach = useMemo(() => stageRadius(placements), [placements])
+	const placements = useMemo(() => layoutOrchestra(performers), [performers])
 
 	return (
 		<>
-			{isPlaying || focusedId
-				? (
-						<DirectorCamera
-							activeNotes={activeNotes}
-							focusedId={focusedId}
-							isPlaying={isPlaying}
-							placements={placements}
-							stageReach={stageReach}
-						/>
-					)
-				: <BreathCamera basePosition={[0, 3.6, 12.6]} baseTarget={[0, 0.15, -1.8]} />}
-			<StageEnvironment isPlaying={isPlaying} />
+			<OrthographicCameraRig />
+			<TheaterBackground />
 			<Stage
 				activeNotes={activeNotes}
 				editMode={editMode}
@@ -892,6 +882,26 @@ function StageScene({
 			/>
 		</>
 	)
+}
+
+/**
+ * Keeps the orthographic camera's zoom in step with the canvas size so the
+ * stage stays the same apparent size on resize. The math mirrors the cover
+ * calculation used by the background plane.
+ */
+function OrthographicCameraRig() {
+	const camera = useThree(state => state.camera) as OrthographicCameraImpl
+	const size = useThree(state => state.size)
+
+	useLayoutEffect(() => {
+		const { zoom } = computeWorldViewport(size)
+		if (camera.zoom !== zoom) {
+			camera.zoom = zoom
+			camera.updateProjectionMatrix()
+		}
+	}, [camera, size])
+
+	return null
 }
 
 function Stage({
@@ -939,6 +949,7 @@ function Stage({
 				return (
 					<PerformerModel
 						active={activeNotes.get(performer.id) ?? 0}
+						depthScale={placement.scale}
 						editMode={editMode}
 						isPlaying={isPlaying}
 						key={performer.id}
@@ -949,7 +960,6 @@ function Stage({
 						performer={performer}
 						position={finalPosition}
 						renderOrder={placement.renderOrder}
-						rotationY={placement.rotationY}
 						scale={scale}
 						startOffset={offset}
 					/>
@@ -961,6 +971,7 @@ function Stage({
 
 function PerformerModel({
 	active,
+	depthScale,
 	editMode,
 	isPlaying,
 	muted,
@@ -970,11 +981,12 @@ function PerformerModel({
 	performer,
 	position,
 	renderOrder,
-	rotationY,
 	scale,
 	startOffset,
 }: {
 	active: number
+	/** Scale derived from depth (front rows render larger). */
+	depthScale: number
 	editMode: boolean
 	isPlaying: boolean
 	muted: boolean
@@ -984,7 +996,6 @@ function PerformerModel({
 	performer: Performer
 	position: [number, number, number]
 	renderOrder: number
-	rotationY: number
 	scale: number
 	startOffset: PerformerOffset
 }) {
@@ -993,6 +1004,7 @@ function PerformerModel({
 	const camera = useThree(state => state.camera)
 	const gl = useThree(state => state.gl)
 	const performerDepth = position[2]
+	const effectiveScale = scale * depthScale
 
 	// Refs so the window listeners always see the latest values without
 	// having to re-attach on every render.
@@ -1012,7 +1024,7 @@ function PerformerModel({
 		const bounce = isActive ? 1 + Math.sin(clock.elapsedTime * 16) * 0.06 + 0.08 : 1
 		groupRef.current.rotation.z = sway
 		const squashY = isActive ? 1 / bounce : 1
-		groupRef.current.scale.set(scale * bounce, scale * squashY, 1)
+		groupRef.current.scale.set(effectiveScale * bounce, effectiveScale * squashY, 1)
 	})
 
 	const handlePointerDown = useCallback((event: { clientX: number, clientY: number, stopPropagation: () => void }) => {
@@ -1069,10 +1081,10 @@ function PerformerModel({
 	}, [onResize])
 
 	return (
-		<group position={position} rotation={[0, rotationY, 0]}>
+		<group position={position}>
 			<group ref={groupRef}>
 				<mesh onPointerDown={handlePointerDown} onWheel={handleWheel} renderOrder={renderOrder}>
-					<planeGeometry args={[1.7, 1.7]} />
+					<planeGeometry args={[characterBaseWidth, characterBaseHeight]} />
 					<meshBasicMaterial alphaTest={0.05} depthWrite={false} map={avatarTexture} opacity={muted ? 0.36 : 1} transparent />
 				</mesh>
 			</group>
