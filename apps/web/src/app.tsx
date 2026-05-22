@@ -31,6 +31,7 @@ import { createPreferredEngine } from './audio/create-engine'
 import { FloatingPanel } from './floating-panel'
 import { categoryById } from './instrument-category'
 import { groupTracksIntoPerformers, songFromMidi, withMidiBinary } from './midi-parse'
+import { getPerformerArtworkSource } from './performer-artwork'
 import { PianoRoll } from './piano-roll'
 import { ScoreModal } from './score-modal'
 import {
@@ -517,7 +518,7 @@ export function App() {
 	}, [isAudioReady, song])
 
 	return (
-		<main className="relative h-dvh w-screen overflow-hidden bg-transparent text-[#fff8e7]">
+		<main className="relative h-dvh w-screen overflow-hidden bg-[#040405] text-[#fff8e7]">
 			<div className={`absolute inset-0 [&_canvas]:block ${editMode ? '[&_canvas]:cursor-grab [&_canvas:active]:cursor-grabbing' : ''}`}>
 				<Canvas
 					camera={{ far: 100, near: 0.1, position: [0, 0, 50], zoom: 100 }}
@@ -540,9 +541,9 @@ export function App() {
 				</Canvas>
 			</div>
 
-			<div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-[#0d0c12]/80 via-[#0d0c12]/30 to-transparent" style={{ height: 'min(180px, 22vh)' }} />
-			<div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-[#0d0c12]/85 via-[#0d0c12]/35 to-transparent" style={{ height: 'min(220px, 28vh)' }} />
-			<div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(ellipse_at_center,transparent_62%,rgba(13,12,18,0.32)_100%)]" />
+			<div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-[#040405]/80 via-[#040405]/30 to-transparent" style={{ height: 'min(180px, 22vh)' }} />
+			<div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-[#040405]/85 via-[#040405]/35 to-transparent" style={{ height: 'min(220px, 28vh)' }} />
+			<div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(ellipse_at_center,transparent_62%,rgba(4,4,5,0.32)_100%)]" />
 
 			<div className="pointer-events-none absolute top-4 left-4 z-20 max-w-[60vw] max-md:right-4 max-md:max-w-none">
 				<div className="pointer-events-auto rounded-lg border border-[#fff8e7]/12 bg-[#18161f]/72 px-4 py-2.5 shadow-[0_18px_50px_rgba(0,0,0,0.42)] backdrop-blur-[14px]">
@@ -1112,7 +1113,7 @@ function useCharacterArtwork(performer: Performer): CharacterArtwork {
 	}, [performer])
 
 	useEffect(() => {
-		const def = categoryById[performer.category]
+		const artworkSource = getPerformerArtworkSource(performer.category)
 		const ctx = artwork.canvas.getContext('2d')!
 		let cancelled = false
 
@@ -1135,7 +1136,9 @@ function useCharacterArtwork(performer: Performer): CharacterArtwork {
 				artwork.texture.needsUpdate = true
 			}
 		}
-		image.src = def.imagePath
+		if (artworkSource) {
+			image.src = artworkSource.src
+		}
 
 		return () => {
 			cancelled = true

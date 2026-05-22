@@ -2,7 +2,7 @@
 
 :root {
 	color: #fff8e7;
-	background: #18161f;
+	background: #040405;
 	font-family: Fraunces, Georgia, 'Times New Roman', serif;
 	font-synthesis: none;
 	text-rendering: optimizeLegibility;
@@ -13,9 +13,7 @@ body {
 	margin: 0;
 	min-width: 320px;
 	min-height: 100vh;
-	background:
-		radial-gradient(circle at 18% 10%, rgba(255, 207, 112, 0.18), transparent 26rem),
-		linear-gradient(135deg, #18161f 0%, #222032 48%, #302337 100%);
+	background: #040405;
 }
 
 button,

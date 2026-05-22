@@ -1,0 +1,89 @@
+{
+	"activePresetId": "classic",
+	"presets": [
+		{
+			"id": "classic",
+			"label": "Classic characters",
+			"performers": {
+				"bass": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/bass.png"
+					}
+				},
+				"brass": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/brass.png"
+					}
+				},
+				"choir": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/choir.png"
+					}
+				},
+				"ethnic": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/ethnic.png"
+					}
+				},
+				"flute": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/flute.png"
+					}
+				},
+				"guitar": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/guitar.png"
+					}
+				},
+				"mallet": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/mallet.png"
+					}
+				},
+				"organ": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/organ.png"
+					}
+				},
+				"percussion": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/percussion.png"
+					}
+				},
+				"piano": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/piano.png"
+					}
+				},
+				"reed": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/reed.png"
+					}
+				},
+				"strings": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/strings.png"
+					}
+				},
+				"synth": {
+					"image": {
+						"kind": "asset",
+						"src": "/characters/synth.png"
+					}
+				}
+			}
+		}
+	]
+}
