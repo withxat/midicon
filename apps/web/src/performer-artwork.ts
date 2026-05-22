@@ -8,23 +8,13 @@ export interface PerformerArtworkAnchors {
 	headY: number
 }
 
-export interface PerformerArtworkOffset {
-	x: number
-	y: number
-}
-
 export type PerformerArtworkSource
-	= | { anchors?: Partial<PerformerArtworkAnchors>, kind: 'asset', scale?: number, src: string }
-		| { anchors?: Partial<PerformerArtworkAnchors>, kind: 'data-url', scale?: number, src: string }
-
-export interface PerformerArtworkStage {
-	offset?: Partial<PerformerArtworkOffset>
-	scale?: number
-}
+	= | { anchors?: Partial<PerformerArtworkAnchors>, kind: 'asset', src: string }
+		| { anchors?: Partial<PerformerArtworkAnchors>, kind: 'data-url', src: string }
 
 export interface PerformerArtworkEntry {
 	image: PerformerArtworkSource
-	stage?: PerformerArtworkStage
+	scale?: number
 }
 
 interface PerformerArtworkPreset {
@@ -46,11 +36,6 @@ export const defaultPerformerArtworkAnchors: PerformerArtworkAnchors = {
 	headY: 0.08,
 }
 
-export const defaultPerformerArtworkOffset: PerformerArtworkOffset = {
-	x: 0,
-	y: 0,
-}
-
 export const activePerformerArtworkPresetId = config.activePresetId
 export const performerArtworkPresets = config.presets
 
@@ -63,27 +48,14 @@ export function getPerformerArtworkSource(category: InstrumentCategory, presetId
 	return getPerformerArtworkEntry(category, presetId)?.image ?? null
 }
 
-export function getPerformerArtworkScale(source: null | PerformerArtworkSource): number {
-	const scale = source?.scale ?? 1
+export function getPerformerArtworkScale(category: InstrumentCategory, presetId = config.activePresetId): number {
+	const scale = getPerformerArtworkEntry(category, presetId)?.scale ?? 1
 	return Number.isFinite(scale) && scale > 0 ? scale : 1
 }
 
 export function getPerformerArtworkAnchors(category: InstrumentCategory, presetId = config.activePresetId): PerformerArtworkAnchors {
 	const anchors = getPerformerArtworkSource(category, presetId)?.anchors
 	return sanitizeAnchors(anchors)
-}
-
-export function getPerformerArtworkStageOffset(category: InstrumentCategory, presetId = config.activePresetId): PerformerArtworkOffset {
-	const offset = getPerformerArtworkEntry(category, presetId)?.stage?.offset
-	return {
-		x: typeof offset?.x === 'number' && Number.isFinite(offset.x) ? offset.x : defaultPerformerArtworkOffset.x,
-		y: typeof offset?.y === 'number' && Number.isFinite(offset.y) ? offset.y : defaultPerformerArtworkOffset.y,
-	}
-}
-
-export function getPerformerArtworkStageScale(category: InstrumentCategory, presetId = config.activePresetId): number {
-	const scale = getPerformerArtworkEntry(category, presetId)?.stage?.scale ?? 1
-	return Number.isFinite(scale) && scale > 0 ? scale : 1
 }
 
 export function sanitizeAnchors(anchors: null | Partial<PerformerArtworkAnchors> | undefined): PerformerArtworkAnchors {

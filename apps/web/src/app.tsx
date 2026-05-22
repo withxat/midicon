@@ -4,7 +4,7 @@ import type { Group, OrthographicCamera as OrthographicCameraImpl } from 'three'
 
 import type { AudioEngine } from './audio/types'
 import type { InstrumentCategory } from './instrument-category'
-import type { PerformerArtworkAnchors, PerformerArtworkOffset } from './performer-artwork'
+import type { PerformerArtworkAnchors } from './performer-artwork'
 import type { NoteEvent, Performer, Song, TrackSource } from './song'
 import type { StagePlacement } from './stage/orchestra-layout'
 
@@ -25,8 +25,8 @@ import { Icon } from '@iconify/react/offline'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Midi } from '@tonejs/midi'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CanvasTexture, Plane, Raycaster, Vector2, Vector3 } from 'three'
-import { BarChart3, Check, Copy, Crosshair, Move, Music, Pause, Play, Repeat, RotateCcw, Scaling, Upload, Users, X } from 'ui/icons'
+import { CanvasTexture } from 'three'
+import { BarChart3, Check, Copy, Crosshair, Music, Pause, Play, Repeat, RotateCcw, Scaling, Upload, Users, X } from 'ui/icons'
 
 import { createPreferredEngine } from './audio/create-engine'
 import { FloatingPanel } from './floating-panel'
@@ -34,12 +34,9 @@ import { categories, categoryById } from './instrument-category'
 import { groupTracksIntoPerformers, songFromMidi, withMidiBinary } from './midi-parse'
 import {
 	activePerformerArtworkPresetId,
-	defaultPerformerArtworkOffset,
 	getPerformerArtworkAnchors,
 	getPerformerArtworkScale,
 	getPerformerArtworkSource,
-	getPerformerArtworkStageOffset,
-	getPerformerArtworkStageScale,
 	performerArtworkPresets,
 	sanitizeAnchors,
 } from './performer-artwork'
@@ -81,76 +78,10 @@ const demoSong: Song = buildDemoSong()
 
 const isDevelopmentMode = import.meta.env.DEV
 const performerScalesStorageKey = 'midicon:performer-scales'
-const performerOffsetsStorageKey = 'midicon:performer-offsets'
 const performerAnchorsStorageKey = 'midicon:performer-anchors'
 const minPerformerScale = 0.4
 const maxPerformerScale = 2.5
-const minStageOffset = -4
-const maxStageOffset = 4
 const finalFileExtensionPattern = /\.[^./\\]+$/
-
-const groundPlane = new Plane(new Vector3(0, 0, 1), 0)
-const pointerRaycaster = new Raycaster()
-const pointerNdc = new Vector2()
-const pointerWorld = new Vector3()
-
-/**
- * Convert a DOM pointer position to a world coordinate on the performer's
- * depth plane. Returns null if the ray misses the plane, which only happens at
- * oblique camera angles.
- */
-function pointerToWorld(
-	camera: Parameters<typeof pointerRaycaster.setFromCamera>[1],
-	canvas: HTMLCanvasElement,
-	clientX: number,
-	clientY: number,
-	planeZ = 0,
-): null | { x: number, y: number } {
-	const rect = canvas.getBoundingClientRect()
-	pointerNdc.set(
-		((clientX - rect.left) / rect.width) * 2 - 1,
-		-((clientY - rect.top) / rect.height) * 2 + 1,
-	)
-	pointerRaycaster.setFromCamera(pointerNdc, camera)
-	groundPlane.constant = -planeZ
-	const hit = pointerRaycaster.ray.intersectPlane(groundPlane, pointerWorld)
-	if (!hit) {
-		return null
-	}
-	return { x: pointerWorld.x, y: pointerWorld.y }
-}
-
-type PerformerOffset = PerformerArtworkOffset
-
-function loadStoredOffsets(): Record<string, PerformerOffset> {
-	if (typeof window === 'undefined') {
-		return {}
-	}
-	try {
-		const raw = window.localStorage.getItem(performerOffsetsStorageKey)
-		if (!raw) {
-			return {}
-		}
-		const parsed = JSON.parse(raw) as unknown
-		if (!parsed || typeof parsed !== 'object') {
-			return {}
-		}
-		const sanitized: Record<string, PerformerOffset> = {}
-		for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
-			if (!value || typeof value !== 'object') {
-				continue
-			}
-			const v = value as { x?: unknown, y?: unknown }
-			if (typeof v.x === 'number' && typeof v.y === 'number' && Number.isFinite(v.x) && Number.isFinite(v.y)) {
-				sanitized[id] = { x: v.x, y: v.y }
-			}
-		}
-		return sanitized
-	}
-	catch {
-		return {}
-	}
-}
 
 function loadStoredScales(): Record<string, number> {
 	if (typeof window === 'undefined') {
@@ -210,27 +141,12 @@ function clampScale(value: number): number {
 	return Math.min(maxPerformerScale, Math.max(minPerformerScale, value))
 }
 
-function clampStageOffset(value: number): number {
-	return Math.min(maxStageOffset, Math.max(minStageOffset, value))
-}
-
 function getPerformerScale(performer: Performer, scales: Record<string, number>): number {
-	return clampScale(scales[performer.id] ?? scales[performer.category] ?? getPerformerArtworkStageScale(performer.category))
-}
-
-function getPerformerOffset(performer: Performer, offsets: Record<string, PerformerOffset>): PerformerOffset {
-	return offsets[performer.id] ?? offsets[performer.category] ?? getPerformerArtworkStageOffset(performer.category)
+	return clampScale(scales[performer.id] ?? scales[performer.category] ?? getPerformerArtworkScale(performer.category))
 }
 
 function getPerformerAnchors(performer: Performer, anchors: Record<string, PerformerArtworkAnchors>): PerformerArtworkAnchors {
 	return anchors[performer.id] ?? anchors[performer.category] ?? getPerformerArtworkAnchors(performer.category)
-}
-
-function anchorToLocalPosition(anchors: PerformerArtworkAnchors): { x: number, y: number } {
-	return {
-		x: (anchors.centerX - 0.5) * characterBaseWidth,
-		y: (0.5 - anchors.headY) * characterBaseHeight,
-	}
 }
 
 function findPerformerByCategory(performers: Performer[], category: InstrumentCategory): null | Performer {
@@ -243,12 +159,7 @@ function getCategoryEditKey(performers: Performer[], category: InstrumentCategor
 
 function getCategoryScale(category: InstrumentCategory, performers: Performer[], scales: Record<string, number>): number {
 	const performer = findPerformerByCategory(performers, category)
-	return performer ? getPerformerScale(performer, scales) : clampScale(scales[category] ?? getPerformerArtworkStageScale(category))
-}
-
-function getCategoryOffset(category: InstrumentCategory, performers: Performer[], offsets: Record<string, PerformerOffset>): PerformerOffset {
-	const performer = findPerformerByCategory(performers, category)
-	return performer ? getPerformerOffset(performer, offsets) : (offsets[category] ?? getPerformerArtworkStageOffset(category))
+	return performer ? getPerformerScale(performer, scales) : clampScale(scales[category] ?? getPerformerArtworkScale(category))
 }
 
 function getCategoryAnchors(category: InstrumentCategory, performers: Performer[], anchors: Record<string, PerformerArtworkAnchors>): PerformerArtworkAnchors {
@@ -259,7 +170,6 @@ function getCategoryAnchors(category: InstrumentCategory, performers: Performer[
 function buildArtworkConfigSnapshot(
 	performers: Performer[],
 	scales: Record<string, number>,
-	offsets: Record<string, PerformerOffset>,
 	anchors: Record<string, PerformerArtworkAnchors>,
 ): string {
 	const performerByCategory = new Map<InstrumentCategory, Performer>(
@@ -273,13 +183,7 @@ function buildArtworkConfigSnapshot(
 			performers: Object.fromEntries(
 				Object.entries(preset.performers).map(([category, entry]) => {
 					const performer = performerByCategory.get(category as InstrumentCategory)
-					const offset = performer
-						? getPerformerOffset(performer, offsets)
-						: {
-								x: offsets[category]?.x ?? entry.stage?.offset?.x ?? defaultPerformerArtworkOffset.x,
-								y: offsets[category]?.y ?? entry.stage?.offset?.y ?? defaultPerformerArtworkOffset.y,
-							}
-					const scale = performer ? getPerformerScale(performer, scales) : (scales[category] ?? entry.stage?.scale ?? 1)
+					const scale = performer ? getPerformerScale(performer, scales) : (scales[category] ?? entry.scale ?? 1)
 					const imageAnchors = performer ? getPerformerAnchors(performer, anchors) : sanitizeAnchors(anchors[category] ?? entry.image.anchors)
 
 					return [category, {
@@ -287,13 +191,7 @@ function buildArtworkConfigSnapshot(
 							...entry.image,
 							anchors: imageAnchors,
 						},
-						stage: {
-							offset: {
-								x: roundConfigNumber(offset.x),
-								y: roundConfigNumber(offset.y),
-							},
-							scale: roundConfigNumber(scale),
-						},
+						scale: roundConfigNumber(scale),
 					}]
 				}),
 			),
@@ -387,9 +285,7 @@ export function App() {
 	const [rollPanelOpen, setRollPanelOpen] = useState(false)
 	const [sizesPanelOpen, setSizesPanelOpen] = useState(false)
 	const [anchorsPanelOpen, setAnchorsPanelOpen] = useState(false)
-	const [editMode, setEditMode] = useState(false)
 	const [performerScales, setPerformerScales] = useState<Record<string, number>>(() => loadStoredScales())
-	const [performerOffsets, setPerformerOffsets] = useState<Record<string, PerformerOffset>>(() => loadStoredOffsets())
 	const [performerAnchors, setPerformerAnchors] = useState<Record<string, PerformerArtworkAnchors>>(() => loadStoredAnchors())
 	const [anchorEditorCategory, setAnchorEditorCategory] = useState<InstrumentCategory>('piano')
 	const [artworkConfigCopied, setArtworkConfigCopied] = useState(false)
@@ -402,15 +298,6 @@ export function App() {
 			// localStorage may be unavailable (private mode); the scales just won't persist.
 		}
 	}, [performerScales])
-
-	useEffect(() => {
-		try {
-			window.localStorage.setItem(performerOffsetsStorageKey, JSON.stringify(performerOffsets))
-		}
-		catch {
-			// As above; offsets just don't persist when storage is unavailable.
-		}
-	}, [performerOffsets])
 
 	useEffect(() => {
 		try {
@@ -429,14 +316,6 @@ export function App() {
 		setPerformerScales({})
 	}, [])
 
-	const handleOffsetChange = useCallback((id: string, x: number, y: number) => {
-		setPerformerOffsets(previous => ({ ...previous, [id]: { x: clampStageOffset(x), y: clampStageOffset(y) } }))
-	}, [])
-
-	const handleResetOffsets = useCallback(() => {
-		setPerformerOffsets({})
-	}, [])
-
 	const handleAnchorChange = useCallback((id: string, nextAnchors: Partial<PerformerArtworkAnchors>) => {
 		setPerformerAnchors(previous => ({
 			...previous,
@@ -448,11 +327,11 @@ export function App() {
 	}, [])
 
 	const handleCopyArtworkConfig = useCallback(async () => {
-		const snapshot = buildArtworkConfigSnapshot(song.performers, performerScales, performerOffsets, performerAnchors)
+		const snapshot = buildArtworkConfigSnapshot(song.performers, performerScales, performerAnchors)
 		await writeTextToClipboard(snapshot)
 		setArtworkConfigCopied(true)
 		window.setTimeout(setArtworkConfigCopied, 1500, false)
-	}, [performerAnchors, performerOffsets, performerScales, song.performers])
+	}, [performerAnchors, performerScales, song.performers])
 
 	const handleAnchorCategorySelect = useCallback((category: InstrumentCategory) => {
 		setAnchorEditorCategory(category)
@@ -466,7 +345,6 @@ export function App() {
 	const anchorEditKey = getCategoryEditKey(song.performers, selectedAnchorCategory)
 	const anchorCategoryDef = categoryById[selectedAnchorCategory]
 	const focusedAnchors = getCategoryAnchors(selectedAnchorCategory, song.performers, performerAnchors)
-	const focusedOffset = getCategoryOffset(selectedAnchorCategory, song.performers, performerOffsets)
 	const focusedScale = getCategoryScale(selectedAnchorCategory, song.performers, performerScales)
 	const pianoRollTracks = useMemo(
 		() => song.performers.map(performer => ({
@@ -714,7 +592,7 @@ export function App() {
 
 	return (
 		<main className="relative h-dvh w-screen overflow-hidden bg-[#030304] text-[#fff8e7]">
-			<div className={`absolute top-0 left-1/2 h-dvh aspect-[3/2] -translate-x-1/2 bg-[#030304] [&_canvas]:block ${editMode ? '[&_canvas]:cursor-grab [&_canvas:active]:cursor-grabbing' : ''}`}>
+			<div className="absolute top-0 left-1/2 h-dvh aspect-[3/2] -translate-x-1/2 bg-[#030304] [&_canvas]:block">
 				<Canvas
 					camera={{ far: 100, near: 0.1, position: [0, 0, 50], zoom: 100 }}
 					dpr={[1, 1.8]}
@@ -724,13 +602,9 @@ export function App() {
 					<StageScene
 						activeNotes={activeNotesByPerformer}
 						anchors={performerAnchors}
-						editMode={editMode}
 						focusedId={focusedId}
 						isPlaying={isPlaying}
-						offsets={performerOffsets}
 						onFocus={id => setFocusedId(previous => previous === id ? null : id)}
-						onOffsetChange={handleOffsetChange}
-						onScaleChange={handleScaleChange}
 						performers={song.performers}
 						scales={performerScales}
 					/>
@@ -874,16 +748,6 @@ export function App() {
 							<Scaling aria-hidden="true" size={14} />
 							<span>Sizes</span>
 						</button>
-						<button
-							aria-pressed={editMode}
-							className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[0.72rem] font-bold tracking-[0.05em] uppercase transition duration-150 ease-out active:scale-[0.96] ${editMode ? 'border-[#75d7c4]/55 bg-[#75d7c4]/18 text-[#75d7c4]' : 'border-[#fff8e7]/16 bg-[#fff8e7]/8 text-[#fff8e7]'}`}
-							onClick={() => setEditMode(value => !value)}
-							title="Drag to move characters, scroll to resize"
-							type="button"
-						>
-							<Move aria-hidden="true" size={14} />
-							<span>{editMode ? 'Editing' : 'Edit'}</span>
-						</button>
 						{isDevelopmentMode
 							? (
 									<button
@@ -987,24 +851,14 @@ export function App() {
 										</div>
 									)
 								})}
-								<div className="mt-1 grid grid-cols-2 gap-2">
-									<button
-										className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#fff8e7]/16 bg-[#fff8e7]/8 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#fff8e7] uppercase transition duration-150 ease-out hover:bg-[#fff8e7]/14 active:scale-[0.96]"
-										onClick={handleResetScales}
-										type="button"
-									>
-										<RotateCcw aria-hidden="true" size={14} />
-										<span>Reset sizes</span>
-									</button>
-									<button
-										className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#fff8e7]/16 bg-[#fff8e7]/8 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#fff8e7] uppercase transition duration-150 ease-out hover:bg-[#fff8e7]/14 active:scale-[0.96]"
-										onClick={handleResetOffsets}
-										type="button"
-									>
-										<RotateCcw aria-hidden="true" size={14} />
-										<span>Reset positions</span>
-									</button>
-								</div>
+								<button
+									className="mt-1 inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#fff8e7]/16 bg-[#fff8e7]/8 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#fff8e7] uppercase transition duration-150 ease-out hover:bg-[#fff8e7]/14 active:scale-[0.96]"
+									onClick={handleResetScales}
+									type="button"
+								>
+									<RotateCcw aria-hidden="true" size={14} />
+									<span>Reset sizes</span>
+								</button>
 							</div>
 						</FloatingPanel>
 					)
@@ -1013,43 +867,34 @@ export function App() {
 			{isDevelopmentMode && anchorsPanelOpen
 				? (
 						<div className="pointer-events-auto absolute inset-0 z-30 grid place-items-center bg-[#030304]/56 p-4 backdrop-blur-[3px]">
-							<div className="grid max-h-[min(760px,calc(100dvh-2rem))] w-[min(1180px,calc(100vw-2rem))] grid-cols-[minmax(420px,1.3fr)_minmax(300px,0.9fr)] overflow-hidden rounded-lg border border-[#fff8e7]/14 bg-[#15131b]/94 shadow-[0_24px_80px_rgba(0,0,0,0.58)] max-md:grid-cols-1">
-								<div className="grid min-h-0 gap-3 border-r border-[#fff8e7]/10 p-4 max-md:border-r-0 max-md:border-b">
-									<div className="flex items-start justify-between gap-3">
-										<div>
-											<p className="font-mono text-[0.64rem] font-bold tracking-[0.1em] text-[#75d7c4] uppercase">Artwork anchors</p>
-											<p className="mt-1 text-[0.8rem] text-[#fff8e7]/62">
-												{`${anchorCategoryDef.label} calibration`}
-											</p>
+							<div className="grid max-h-[min(720px,calc(100dvh-2rem))] w-[min(1100px,calc(100vw-2rem))] grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-[#fff8e7]/14 bg-[#15131b]/94 shadow-[0_24px_80px_rgba(0,0,0,0.58)]">
+								<div className="grid min-h-0 grid-cols-[minmax(260px,320px)_minmax(0,1fr)] max-md:grid-cols-1">
+									<div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 border-r border-[#fff8e7]/10 p-4 max-md:border-r-0 max-md:border-b">
+										<div className="flex items-start justify-between gap-3">
+											<div>
+												<p className="font-mono text-[0.64rem] font-bold tracking-[0.1em] text-[#75d7c4] uppercase">Artwork anchors</p>
+												<p className="mt-1 text-[0.8rem] text-[#fff8e7]/62">
+													{`${anchorCategoryDef.label} calibration`}
+												</p>
+											</div>
+											<button
+												aria-label="Close anchor editor"
+												className="grid size-9 place-items-center rounded-lg border border-[#fff8e7]/14 bg-[#fff8e7]/8 text-[#fff8e7] transition duration-150 ease-out hover:bg-[#fff8e7]/14 active:scale-[0.96]"
+												onClick={() => setAnchorsPanelOpen(false)}
+												type="button"
+											>
+												<X aria-hidden="true" size={14} />
+											</button>
 										</div>
-										<button
-											aria-label="Close anchor editor"
-											className="grid size-9 place-items-center rounded-lg border border-[#fff8e7]/14 bg-[#fff8e7]/8 text-[#fff8e7] transition duration-150 ease-out hover:bg-[#fff8e7]/14 active:scale-[0.96]"
-											onClick={() => setAnchorsPanelOpen(false)}
-											type="button"
-										>
-											<X aria-hidden="true" size={14} />
-										</button>
-									</div>
 
-									<div className="grid min-h-0 gap-3">
 										<AnchorPreview
 											accent={anchorCategoryDef.accent}
 											anchors={focusedAnchors}
 											imageSrc={getPerformerArtworkSource(selectedAnchorCategory)?.src ?? ''}
 										/>
-										<AnchorLineup
-											anchors={performerAnchors}
-											onSelect={handleAnchorCategorySelect}
-											performers={song.performers}
-											scales={performerScales}
-											selectedCategory={selectedAnchorCategory}
-										/>
 									</div>
-								</div>
 
-								<div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 p-4 text-[#fff8e7]">
-									<>
+									<div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 p-4 text-[#fff8e7]">
 										<div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 rounded-lg border border-[#fff8e7]/12 bg-[#fff8e7]/6 p-2.5" style={{ '--accent': anchorCategoryDef.accent } as CSSProperties}>
 											<span className="grid size-[30px] place-items-center rounded-full bg-(--accent) text-[#211b22]">
 												<Icon height={16} icon={iconByCategory[selectedAnchorCategory]} width={16} />
@@ -1063,7 +908,7 @@ export function App() {
 										<div className="grid content-start gap-3 overflow-auto pr-1">
 											<AnchorSlider
 												accent={anchorCategoryDef.accent}
-												label="Center line"
+												label="Center X"
 												max={1}
 												min={0}
 												onChange={value => handleAnchorChange(anchorEditKey, { centerX: value })}
@@ -1072,16 +917,7 @@ export function App() {
 											/>
 											<AnchorSlider
 												accent={anchorCategoryDef.accent}
-												label="Note origin"
-												max={1}
-												min={0}
-												onChange={value => handleAnchorChange(anchorEditKey, { headY: value })}
-												step={0.01}
-												value={focusedAnchors.headY}
-											/>
-											<AnchorSlider
-												accent={anchorCategoryDef.accent}
-												label="Foot line"
+												label="Foot Y"
 												max={1}
 												min={0}
 												onChange={value => handleAnchorChange(anchorEditKey, { footY: value })}
@@ -1090,42 +926,43 @@ export function App() {
 											/>
 											<AnchorSlider
 												accent={anchorCategoryDef.accent}
-												label="Stage size"
+												label="Note Y"
+												max={1}
+												min={0}
+												onChange={value => handleAnchorChange(anchorEditKey, { headY: value })}
+												step={0.01}
+												value={focusedAnchors.headY}
+											/>
+											<AnchorSlider
+												accent={anchorCategoryDef.accent}
+												label="Size"
 												max={maxPerformerScale}
 												min={minPerformerScale}
 												onChange={value => handleScaleChange(anchorEditKey, value)}
 												step={0.05}
 												value={focusedScale}
 											/>
-											<AnchorSlider
-												accent={anchorCategoryDef.accent}
-												label="Offset X"
-												max={maxStageOffset}
-												min={minStageOffset}
-												onChange={value => handleOffsetChange(anchorEditKey, value, focusedOffset.y)}
-												step={0.05}
-												value={focusedOffset.x}
-											/>
-											<AnchorSlider
-												accent={anchorCategoryDef.accent}
-												label="Offset Y"
-												max={maxStageOffset}
-												min={minStageOffset}
-												onChange={value => handleOffsetChange(anchorEditKey, focusedOffset.x, value)}
-												step={0.05}
-												value={focusedOffset.y}
-											/>
 										</div>
-									</>
 
-									<button
-										className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#75d7c4]/40 bg-[#75d7c4]/14 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#75d7c4] uppercase transition duration-150 ease-out hover:bg-[#75d7c4]/20 active:scale-[0.96]"
-										onClick={() => void handleCopyArtworkConfig()}
-										type="button"
-									>
-										{artworkConfigCopied ? <Check aria-hidden="true" size={14} /> : <Copy aria-hidden="true" size={14} />}
-										<span>{artworkConfigCopied ? 'Copied JSON' : 'Copy JSON'}</span>
-									</button>
+										<button
+											className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#75d7c4]/40 bg-[#75d7c4]/14 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#75d7c4] uppercase transition duration-150 ease-out hover:bg-[#75d7c4]/20 active:scale-[0.96]"
+											onClick={() => void handleCopyArtworkConfig()}
+											type="button"
+										>
+											{artworkConfigCopied ? <Check aria-hidden="true" size={14} /> : <Copy aria-hidden="true" size={14} />}
+											<span>{artworkConfigCopied ? 'Copied JSON' : 'Copy JSON'}</span>
+										</button>
+									</div>
+								</div>
+
+								<div className="border-t border-[#fff8e7]/10 p-4">
+									<AnchorLineup
+										anchors={performerAnchors}
+										onSelect={handleAnchorCategorySelect}
+										performers={song.performers}
+										scales={performerScales}
+										selectedCategory={selectedAnchorCategory}
+									/>
 								</div>
 							</div>
 						</div>
@@ -1211,19 +1048,21 @@ function AnchorPreview({
 	imageSrc: string
 }) {
 	return (
-		<div className="grid min-h-0 gap-3">
-			<div className="relative aspect-square overflow-hidden rounded-lg border border-[#fff8e7]/12 bg-[#08070a] shadow-[inset_0_0_0_1px_rgba(255,248,231,0.04)]" style={{ '--accent': accent } as CSSProperties}>
-				{imageSrc
-					? <img alt="" className="absolute inset-0 size-full object-contain p-6" draggable={false} src={imageSrc} />
-					: null}
-				<div className="absolute inset-x-6 top-[var(--head-y)] h-px bg-[#ffcf70] shadow-[0_0_12px_rgba(255,207,112,0.7)]" style={{ '--head-y': `${anchors.headY * 100}%` } as CSSProperties} />
-				<div className="absolute inset-x-6 top-[var(--foot-y)] h-px bg-[#ff8da1] shadow-[0_0_12px_rgba(255,141,161,0.7)]" style={{ '--foot-y': `${anchors.footY * 100}%` } as CSSProperties} />
-				<div className="absolute inset-y-6 left-[var(--center-x)] w-px bg-[#75d7c4] shadow-[0_0_12px_rgba(117,215,196,0.7)]" style={{ '--center-x': `${anchors.centerX * 100}%` } as CSSProperties} />
-				<div className="absolute left-[var(--center-x)] top-[var(--head-y)] grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[#ffcf70]/70 bg-[#15131b]/82 font-mono text-[1rem] text-[#ffcf70] shadow-[0_0_18px_rgba(255,207,112,0.28)]" style={{ '--center-x': `${anchors.centerX * 100}%`, '--head-y': `${anchors.headY * 100}%` } as CSSProperties}>
-					♪
+		<div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3">
+			<div className="grid min-h-0 place-items-center">
+				<div className="relative aspect-square h-full max-h-[260px] w-full max-w-[260px] overflow-hidden rounded-lg border border-[#fff8e7]/12 bg-[#08070a] shadow-[inset_0_0_0_1px_rgba(255,248,231,0.04)]" style={{ '--accent': accent } as CSSProperties}>
+					{imageSrc
+						? <img alt="" className="absolute inset-0 size-full object-contain p-6" draggable={false} src={imageSrc} />
+						: null}
+					<div className="absolute inset-x-6 top-[var(--head-y)] h-px bg-[#ffcf70] shadow-[0_0_12px_rgba(255,207,112,0.7)]" style={{ '--head-y': `${anchors.headY * 100}%` } as CSSProperties} />
+					<div className="absolute inset-x-6 top-[var(--foot-y)] h-px bg-[#ff8da1] shadow-[0_0_12px_rgba(255,141,161,0.7)]" style={{ '--foot-y': `${anchors.footY * 100}%` } as CSSProperties} />
+					<div className="absolute inset-y-6 left-[var(--center-x)] w-px bg-[#75d7c4] shadow-[0_0_12px_rgba(117,215,196,0.7)]" style={{ '--center-x': `${anchors.centerX * 100}%` } as CSSProperties} />
+					<div className="absolute left-[var(--center-x)] top-[var(--head-y)] grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[#ffcf70]/70 bg-[#15131b]/82 font-mono text-[1rem] text-[#ffcf70] shadow-[0_0_18px_rgba(255,207,112,0.28)]" style={{ '--center-x': `${anchors.centerX * 100}%`, '--head-y': `${anchors.headY * 100}%` } as CSSProperties}>
+						♪
+					</div>
+					<span className="absolute top-[calc(var(--head-y)+0.35rem)] left-8 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.62rem] font-bold tracking-[0.05em] text-[#ffcf70] uppercase" style={{ '--head-y': `${anchors.headY * 100}%` } as CSSProperties}>note origin</span>
+					<span className="absolute top-[calc(var(--foot-y)+0.35rem)] left-8 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.62rem] font-bold tracking-[0.05em] text-[#ff8da1] uppercase" style={{ '--foot-y': `${anchors.footY * 100}%` } as CSSProperties}>foot line</span>
 				</div>
-				<span className="absolute top-[calc(var(--head-y)+0.35rem)] left-8 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.62rem] font-bold tracking-[0.05em] text-[#ffcf70] uppercase" style={{ '--head-y': `${anchors.headY * 100}%` } as CSSProperties}>note origin</span>
-				<span className="absolute top-[calc(var(--foot-y)+0.35rem)] left-8 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.62rem] font-bold tracking-[0.05em] text-[#ff8da1] uppercase" style={{ '--foot-y': `${anchors.footY * 100}%` } as CSSProperties}>foot line</span>
 			</div>
 			<div className="grid grid-cols-3 gap-2 font-mono text-[0.62rem] font-bold tracking-[0.05em] uppercase">
 				<span className="rounded border border-[#75d7c4]/24 bg-[#75d7c4]/10 px-2 py-1 text-[#75d7c4]">
@@ -1261,73 +1100,76 @@ function AnchorLineup({
 }) {
 	const footBaseline = 150
 	const baseImageSize = 58
+	const itemWidth = 92
 
 	return (
-		<div className="relative overflow-hidden rounded-lg border border-[#fff8e7]/12 bg-[#08070a]">
-			<div className="absolute inset-x-0 top-[44px] h-px bg-[#ffcf70]/70 shadow-[0_0_10px_rgba(255,207,112,0.45)]" />
-			<div className="absolute inset-x-0 top-[150px] h-px bg-[#ff8da1]/80 shadow-[0_0_10px_rgba(255,141,161,0.5)]" />
-			<div className="pointer-events-none absolute top-[46px] left-2 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.58rem] font-bold tracking-[0.04em] text-[#ffcf70] uppercase">note reference</div>
-			<div className="pointer-events-none absolute top-[152px] left-2 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.58rem] font-bold tracking-[0.04em] text-[#ff8da1] uppercase">foot baseline</div>
-			<div className="relative grid h-[200px] gap-1.5 px-3 pt-2 pb-8" style={{ gridTemplateColumns: `repeat(${categories.length}, minmax(0, 1fr))` }}>
-				{categories.map((category) => {
-					const performerAnchors = getCategoryAnchors(category.id, performers, anchors)
-					const scale = getCategoryScale(category.id, performers, scales)
-					const imageSize = baseImageSize * scale
-					const imageTop = footBaseline - performerAnchors.footY * imageSize
-					const noteTop = imageTop + performerAnchors.headY * imageSize
-					const noteLeft = performerAnchors.centerX * imageSize
-					const selected = category.id === selectedCategory
-					const imageSrc = getPerformerArtworkSource(category.id)?.src ?? ''
+		<div className="overflow-x-auto overflow-y-hidden rounded-lg border border-[#fff8e7]/12 bg-[#08070a]">
+			<div className="relative h-[200px] min-w-full" style={{ width: categories.length * itemWidth + 12 * (categories.length - 1) + 24 }}>
+				<div className="absolute inset-x-0 top-[44px] h-px bg-[#ffcf70]/70 shadow-[0_0_10px_rgba(255,207,112,0.45)]" />
+				<div className="absolute inset-x-0 top-[150px] h-px bg-[#ff8da1]/80 shadow-[0_0_10px_rgba(255,141,161,0.5)]" />
+				<div className="pointer-events-none absolute top-[46px] left-2 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.58rem] font-bold tracking-[0.04em] text-[#ffcf70] uppercase">note reference</div>
+				<div className="pointer-events-none absolute top-[152px] left-2 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.58rem] font-bold tracking-[0.04em] text-[#ff8da1] uppercase">foot baseline</div>
+				<div className="absolute inset-0 flex h-[200px] items-stretch gap-1.5 px-3 pt-2 pb-8">
+					{categories.map((category) => {
+						const performerAnchors = getCategoryAnchors(category.id, performers, anchors)
+						const scale = getCategoryScale(category.id, performers, scales)
+						const imageSize = baseImageSize * scale
+						const imageTop = footBaseline - performerAnchors.footY * imageSize
+						const noteTop = imageTop + performerAnchors.headY * imageSize
+						const noteLeft = performerAnchors.centerX * imageSize
+						const selected = category.id === selectedCategory
+						const imageSrc = getPerformerArtworkSource(category.id)?.src ?? ''
 
-					return (
-						<button
-							aria-pressed={selected}
-							className={`relative min-w-0 rounded-lg border transition duration-150 ease-out active:scale-[0.96] ${selected ? 'border-(--accent) bg-[#fff8e7]/8 shadow-[0_0_0_1px_var(--accent)]' : 'border-[#fff8e7]/10 bg-[#fff8e7]/4 hover:bg-[#fff8e7]/7'}`}
-							key={category.id}
-							onClick={() => onSelect(category.id)}
-							style={{ '--accent': category.accent } as CSSProperties}
-							type="button"
-						>
-							{imageSrc
-								? (
-										<img
-											style={{
-												height: imageSize,
-												top: imageTop,
-												width: imageSize,
-											}}
-											alt=""
-											className="absolute left-1/2 max-w-none -translate-x-1/2 object-contain"
-											draggable={false}
-											src={imageSrc}
-										/>
-									)
-								: null}
-							<span
-								style={{
-									left: `calc(50% - ${imageSize / 2}px + ${performerAnchors.centerX * imageSize}px)`,
-									top: imageTop + 4,
-								}}
-								className="absolute z-10 block h-[118px] w-px bg-[#75d7c4]/75 shadow-[0_0_8px_rgba(117,215,196,0.45)]"
-							/>
-							<span
-								style={{
-									left: `calc(50% - ${imageSize / 2}px + ${noteLeft}px)`,
-									top: noteTop,
-								}}
-								className="absolute z-20 grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[#ffcf70]/70 bg-[#15131b]/88 font-mono text-[0.72rem] text-[#ffcf70]"
+						return (
+							<button
+								aria-pressed={selected}
+								className={`relative w-[92px] shrink-0 rounded-lg border transition duration-150 ease-out active:scale-[0.96] ${selected ? 'border-(--accent) bg-[#fff8e7]/8 shadow-[0_0_0_1px_var(--accent)]' : 'border-[#fff8e7]/10 bg-[#fff8e7]/4 hover:bg-[#fff8e7]/7'}`}
+								key={category.id}
+								onClick={() => onSelect(category.id)}
+								style={{ '--accent': category.accent } as CSSProperties}
+								type="button"
 							>
-								♪
-							</span>
-							<span className="absolute inset-x-1 bottom-1 truncate rounded bg-[#08070a]/78 px-1.5 py-1 text-center font-mono text-[0.58rem] font-bold tracking-[0.04em] text-[#fff8e7]/74 uppercase">
-								{category.label}
-								{' '}
-								{scale.toFixed(2)}
-								x
-							</span>
-						</button>
-					)
-				})}
+								{imageSrc
+									? (
+											<img
+												style={{
+													height: imageSize,
+													top: imageTop,
+													width: imageSize,
+												}}
+												alt=""
+												className="absolute left-1/2 max-w-none -translate-x-1/2 object-contain"
+												draggable={false}
+												src={imageSrc}
+											/>
+										)
+									: null}
+								<span
+									style={{
+										left: `calc(50% - ${imageSize / 2}px + ${performerAnchors.centerX * imageSize}px)`,
+										top: imageTop + 4,
+									}}
+									className="absolute z-10 block h-[118px] w-px bg-[#75d7c4]/75 shadow-[0_0_8px_rgba(117,215,196,0.45)]"
+								/>
+								<span
+									style={{
+										left: `calc(50% - ${imageSize / 2}px + ${noteLeft}px)`,
+										top: noteTop,
+									}}
+									className="absolute z-20 grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[#ffcf70]/70 bg-[#15131b]/88 font-mono text-[0.72rem] text-[#ffcf70]"
+								>
+									♪
+								</span>
+								<span className="absolute inset-x-1 bottom-1 truncate rounded bg-[#08070a]/78 px-1.5 py-1 text-center font-mono text-[0.58rem] font-bold tracking-[0.04em] text-[#fff8e7]/74 uppercase">
+									{category.label}
+									{' '}
+									{scale.toFixed(2)}
+									x
+								</span>
+							</button>
+						)
+					})}
+				</div>
 			</div>
 		</div>
 	)
@@ -1336,25 +1178,17 @@ function AnchorLineup({
 function StageScene({
 	activeNotes,
 	anchors,
-	editMode,
 	focusedId,
 	isPlaying,
-	offsets,
 	onFocus,
-	onOffsetChange,
-	onScaleChange,
 	performers,
 	scales,
 }: {
 	activeNotes: Map<string, number>
 	anchors: Record<string, PerformerArtworkAnchors>
-	editMode: boolean
 	focusedId: null | string
 	isPlaying: boolean
-	offsets: Record<string, PerformerOffset>
 	onFocus: (id: string) => void
-	onOffsetChange: (id: string, x: number, y: number) => void
-	onScaleChange: (id: string, value: number) => void
 	performers: Performer[]
 	scales: Record<string, number>
 }) {
@@ -1367,13 +1201,9 @@ function StageScene({
 			<Stage
 				activeNotes={activeNotes}
 				anchors={anchors}
-				editMode={editMode}
 				focusedId={focusedId}
 				isPlaying={isPlaying}
-				offsets={offsets}
 				onFocus={onFocus}
-				onOffsetChange={onOffsetChange}
-				onScaleChange={onScaleChange}
 				performers={performers}
 				placements={placements}
 				scales={scales}
@@ -1405,26 +1235,18 @@ function OrthographicCameraRig() {
 function Stage({
 	activeNotes,
 	anchors,
-	editMode,
 	focusedId,
 	isPlaying,
-	offsets,
 	onFocus,
-	onOffsetChange,
-	onScaleChange,
 	performers,
 	placements,
 	scales,
 }: {
 	activeNotes: Map<string, number>
 	anchors: Record<string, PerformerArtworkAnchors>
-	editMode: boolean
 	focusedId: null | string
 	isPlaying: boolean
-	offsets: Record<string, PerformerOffset>
 	onFocus: (id: string) => void
-	onOffsetChange: (id: string, x: number, y: number) => void
-	onScaleChange: (id: string, value: number) => void
 	performers: Performer[]
 	placements: Map<string, StagePlacement>
 	scales: Record<string, number>
@@ -1440,31 +1262,20 @@ function Stage({
 				const muted = focusedId !== null && performer.id !== focusedId
 				const anchorsForPerformer = getPerformerAnchors(performer, anchors)
 				const scale = getPerformerScale(performer, scales)
-				const offset = getPerformerOffset(performer, offsets)
-				const finalPosition: [number, number, number] = [
-					placement.position[0] + offset.x,
-					placement.position[1] + offset.y,
-					placement.position[2],
-				]
 
 				return (
 					<PerformerModel
 						active={activeNotes.get(performer.id) ?? 0}
 						anchors={anchorsForPerformer}
 						depthScale={placement.scale}
-						editMode={editMode}
 						isPlaying={isPlaying}
 						key={performer.id}
 						muted={muted}
 						onFocus={() => onFocus(performer.id)}
-						onMove={(x, y) => onOffsetChange(performer.id, x, y)}
-						onResize={value => onScaleChange(performer.id, value)}
 						performer={performer}
-						position={finalPosition}
+						placement={placement.position}
 						renderOrder={placement.renderOrder}
 						scale={scale}
-						showAnchors={editMode && performer.id === focusedId}
-						startOffset={offset}
 					/>
 				)
 			})}
@@ -1476,151 +1287,74 @@ function PerformerModel({
 	active,
 	anchors,
 	depthScale,
-	editMode,
 	isPlaying,
 	muted,
 	onFocus,
-	onMove,
-	onResize,
 	performer,
-	position,
+	placement,
 	renderOrder,
 	scale,
-	showAnchors,
-	startOffset,
 }: {
 	active: number
 	anchors: PerformerArtworkAnchors
 	/** Scale derived from depth (front rows render larger). */
 	depthScale: number
-	editMode: boolean
 	isPlaying: boolean
 	muted: boolean
 	onFocus: () => void
-	onMove: (x: number, y: number) => void
-	onResize: (value: number) => void
 	performer: Performer
-	position: [number, number, number]
+	/** Stage placement the (centerX, footY) anchor of the artwork lands on. */
+	placement: [number, number, number]
 	renderOrder: number
 	scale: number
-	showAnchors: boolean
-	startOffset: PerformerOffset
 }) {
 	const groupRef = useRef<Group>(null)
 	const { texture: avatarTexture } = useCharacterArtwork(performer)
-	const camera = useThree(state => state.camera)
-	const gl = useThree(state => state.gl)
-	const performerDepth = position[2]
 	const effectiveScale = scale * depthScale
-	const noteOrigin = anchorToLocalPosition(anchors)
 
-	// Refs so the window listeners always see the latest values without
-	// having to re-attach on every render.
-	const editModeRef = useRef(editMode)
-	const scaleRef = useRef(scale)
-	const startOffsetRef = useRef(startOffset)
-	editModeRef.current = editMode
-	scaleRef.current = scale
-	startOffsetRef.current = startOffset
+	// Translate the image so that its (centerX, footY) anchor sits at the
+	// stage placement. With the image plane centered on the outer group,
+	// the group's world position is the placement plus the (anchor → center)
+	// vector, multiplied by the on-screen scale.
+	const imageCenter: [number, number, number] = [
+		placement[0] + (0.5 - anchors.centerX) * characterBaseWidth * effectiveScale,
+		placement[1] + (anchors.footY - 0.5) * characterBaseHeight * effectiveScale,
+		placement[2],
+	]
+
+	// Notes spawn from the (centerX, headY) point of the image — which is
+	// directly above the placement at a height of (footY − headY)·H·scale.
+	const noteOrigin = {
+		x: 0,
+		y: (anchors.footY - anchors.headY) * characterBaseHeight * effectiveScale,
+	}
 
 	useFrame(({ clock }) => {
 		if (!groupRef.current) {
 			return
 		}
 		const isActive = isPlaying && active > 0
-		const sway = isActive ? Math.sin(clock.elapsedTime * 1.8 + position[0]) * 0.1 : 0
+		const sway = isActive ? Math.sin(clock.elapsedTime * 1.8 + placement[0]) * 0.1 : 0
 		const bounce = isActive ? 1 + Math.sin(clock.elapsedTime * 16) * 0.06 + 0.08 : 1
 		groupRef.current.rotation.z = sway
 		const squashY = isActive ? 1 / bounce : 1
 		groupRef.current.scale.set(effectiveScale * bounce, effectiveScale * squashY, 1)
 	})
 
-	const handlePointerDown = useCallback((event: { clientX: number, clientY: number, stopPropagation: () => void }) => {
+	const handlePointerDown = useCallback((event: { stopPropagation: () => void }) => {
 		event.stopPropagation()
-
-		if (!editModeRef.current) {
-			onFocus()
-			return
-		}
-
-		const canvas = gl.domElement
-		const start = pointerToWorld(camera, canvas, event.clientX, event.clientY, performerDepth)
-		if (!start) {
-			return
-		}
-		const offsetAtStart = { ...startOffsetRef.current }
-		let didMove = false
-
-		const handleMove = (moveEvent: PointerEvent) => {
-			const current = pointerToWorld(camera, canvas, moveEvent.clientX, moveEvent.clientY, performerDepth)
-			if (!current) {
-				return
-			}
-			didMove = true
-			onMove(
-				offsetAtStart.x + (current.x - start.x),
-				offsetAtStart.y + (current.y - start.y),
-			)
-		}
-
-		const handleUp = () => {
-			window.removeEventListener('pointermove', handleMove)
-			window.removeEventListener('pointerup', handleUp)
-			window.removeEventListener('pointercancel', handleUp)
-			// Treat a press without drag as a focus click, mirroring the
-			// behavior outside edit mode for discoverability.
-			if (!didMove) {
-				onFocus()
-			}
-		}
-
-		window.addEventListener('pointermove', handleMove)
-		window.addEventListener('pointerup', handleUp)
-		window.addEventListener('pointercancel', handleUp)
-	}, [camera, gl, onFocus, onMove, performerDepth])
-
-	const handleWheel = useCallback((event: { deltaY: number, stopPropagation: () => void }) => {
-		if (!editModeRef.current) {
-			return
-		}
-		event.stopPropagation()
-		const factor = event.deltaY > 0 ? 1 / 1.06 : 1.06
-		onResize(clampScale(scaleRef.current * factor))
-	}, [onResize])
+		onFocus()
+	}, [onFocus])
 
 	return (
-		<group position={position}>
+		<group position={imageCenter}>
 			<group ref={groupRef}>
-				<mesh onPointerDown={handlePointerDown} onWheel={handleWheel} renderOrder={renderOrder}>
+				<mesh onPointerDown={handlePointerDown} renderOrder={renderOrder}>
 					<planeGeometry args={[characterBaseWidth, characterBaseHeight]} />
 					<meshBasicMaterial alphaTest={0.05} depthWrite={false} map={avatarTexture} opacity={muted ? 0.36 : 1} transparent />
 				</mesh>
-				{showAnchors ? <CharacterAnchorGuides anchors={anchors} renderOrder={renderOrder + 2} /> : null}
 			</group>
 			<FloatingNotes accent={performer.accent} active={muted ? 0 : active} isPlaying={isPlaying} origin={noteOrigin} renderOrder={renderOrder + 1} />
-		</group>
-	)
-}
-
-function CharacterAnchorGuides({ anchors, renderOrder }: { anchors: PerformerArtworkAnchors, renderOrder: number }) {
-	const centerX = (anchors.centerX - 0.5) * characterBaseWidth
-	const headY = (0.5 - anchors.headY) * characterBaseHeight
-	const footY = (0.5 - anchors.footY) * characterBaseHeight
-
-	return (
-		<group position={[0, 0, 0.02]}>
-			<mesh position={[centerX, 0, 0]} renderOrder={renderOrder}>
-				<planeGeometry args={[0.018, characterBaseHeight]} />
-				<meshBasicMaterial color="#75d7c4" depthTest={false} depthWrite={false} opacity={0.78} transparent />
-			</mesh>
-			<mesh position={[0, headY, 0]} renderOrder={renderOrder}>
-				<planeGeometry args={[characterBaseWidth, 0.018]} />
-				<meshBasicMaterial color="#ffcf70" depthTest={false} depthWrite={false} opacity={0.72} transparent />
-			</mesh>
-			<mesh position={[0, footY, 0]} renderOrder={renderOrder}>
-				<planeGeometry args={[characterBaseWidth, 0.018]} />
-				<meshBasicMaterial color="#ff8da1" depthTest={false} depthWrite={false} opacity={0.72} transparent />
-			</mesh>
 		</group>
 	)
 }
@@ -1658,7 +1392,7 @@ function useCharacterArtwork(performer: Performer): CharacterArtwork {
 				return
 			}
 			ctx.clearRect(0, 0, artwork.canvas.width, artwork.canvas.height)
-			drawContainImage(ctx, image, artwork.canvas.width, getPerformerArtworkScale(artworkSource))
+			drawContainImage(ctx, image, artwork.canvas.width)
 			artwork.texture.needsUpdate = true
 		}
 		image.onerror = () => {
@@ -1679,8 +1413,8 @@ function useCharacterArtwork(performer: Performer): CharacterArtwork {
 	return { texture: artwork.texture }
 }
 
-function drawContainImage(context: CanvasRenderingContext2D, image: HTMLImageElement, size: number, artworkScale = 1) {
-	const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight) * artworkScale
+function drawContainImage(context: CanvasRenderingContext2D, image: HTMLImageElement, size: number) {
+	const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight)
 	const width = image.naturalWidth * scale
 	const height = image.naturalHeight * scale
 	context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height)

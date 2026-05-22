@@ -105,7 +105,7 @@ export function computeWorldViewport(size: { height: number, width: number }): W
  */
 export const stageCenter = {
 	x: 0,
-	y: -0.1 * backgroundWorldHeight, // ≈ -0.55, ~10% below image center
+	y: -0.18 * backgroundWorldHeight, // ≈ -0.99, sits the foot-anchored characters on the stage floor
 } as const
 /** Horizontal half-extent of the visible stage floor. */
 export const stageRadiusX = 0.27 * backgroundWorldWidth // ≈ 2.23
