@@ -541,8 +541,6 @@ export function App() {
 				</Canvas>
 			</div>
 
-			<div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(ellipse_at_center,transparent_62%,rgba(3,3,4,0.32)_100%)]" />
-
 			<div className="pointer-events-none absolute top-4 left-4 z-20 max-w-[60vw] max-md:right-4 max-md:max-w-none">
 				<div className="pointer-events-auto rounded-lg border border-[#fff8e7]/12 bg-[#18161f]/72 px-4 py-2.5 shadow-[0_18px_50px_rgba(0,0,0,0.42)] backdrop-blur-[14px]">
 					<p className="font-mono text-[0.62rem] font-bold tracking-[0.1em] text-[#ffcf70] uppercase">Now playing</p>
