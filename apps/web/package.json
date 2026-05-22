@@ -21,7 +21,7 @@
 		"react-dom": "catalog:react",
 		"spessasynth_core": "4.3.3",
 		"spessasynth_lib": "4.3.3",
-		"three": "^0.184.0",
+		"three": "0.182.0",
 		"tone": "^15.1.22",
 		"ui": "workspace:*",
 		"verovio": "^6.2.0"
@@ -30,7 +30,7 @@
 		"@tailwindcss/vite": "catalog:tailwind",
 		"@types/react": "catalog:react",
 		"@types/react-dom": "catalog:react",
-		"@types/three": "^0.184.1",
+		"@types/three": "0.182.0",
 		"@vitejs/plugin-react": "^6.0.2",
 		"@withxat/eslint-config": "catalog:devtool",
 		"eslint": "catalog:devtool",

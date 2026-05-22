@@ -106,6 +106,13 @@ export function VerovioScore({
 
 		let cancelled = false
 		let resizeObserver: null | ResizeObserver = null
+		const scheduleRenderState = (state: 'error' | 'loading' | 'ready') => {
+			queueMicrotask(() => {
+				if (!cancelled) {
+					setRenderState(state)
+				}
+			})
+		}
 
 		const meiSource = filterMeiByCategory(scoreSource.source, scoreSource.staffsByCategory, focusedCategory)
 
@@ -120,7 +127,7 @@ export function VerovioScore({
 			eventsRef.current = []
 			measuresRef.current = []
 			highlightedRef.current = []
-			setRenderState('error')
+			scheduleRenderState('error')
 			return
 		}
 
@@ -173,7 +180,7 @@ export function VerovioScore({
 			eventsRef.current = buildPlaybackEntries(timemap)
 			measuresRef.current = buildMeasureEntries(timemap)
 			highlightedRef.current = []
-			setRenderState('ready')
+			scheduleRenderState('ready')
 		}
 
 		redraw()
