@@ -70,6 +70,7 @@ const demoSong: Song = buildDemoSong()
 
 const performerScalesStorageKey = 'midicon:performer-scales'
 const performerOffsetsStorageKey = 'midicon:performer-offsets'
+const stageBackgroundColor = '#030304'
 const minPerformerScale = 0.4
 const maxPerformerScale = 2.5
 const finalFileExtensionPattern = /\.[^./\\]+$/
@@ -519,11 +520,12 @@ export function App() {
 
 	return (
 		<main className="relative h-dvh w-screen overflow-hidden bg-[#030304] text-[#fff8e7]">
-			<div className={`absolute inset-0 [&_canvas]:block ${editMode ? '[&_canvas]:cursor-grab [&_canvas:active]:cursor-grabbing' : ''}`}>
+			<div className={`absolute inset-0 bg-[#030304] [&_canvas]:block [&_canvas]:bg-[#030304] ${editMode ? '[&_canvas]:cursor-grab [&_canvas:active]:cursor-grabbing' : ''}`}>
 				<Canvas
 					camera={{ far: 100, near: 0.1, position: [0, 0, 50], zoom: 100 }}
 					dpr={[1, 1.8]}
-					gl={{ alpha: true }}
+					gl={{ alpha: false }}
+					onCreated={({ gl }) => gl.setClearColor(stageBackgroundColor, 1)}
 					orthographic
 				>
 					<StageScene
