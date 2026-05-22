@@ -8,92 +8,248 @@
 				"bass": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.0,
-						"src": "/characters/bass.png"
+						"scale": 1,
+						"src": "/characters/bass.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1
 					}
 				},
 				"brass": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.0,
-						"src": "/characters/brass.png"
+						"scale": 1,
+						"src": "/characters/brass.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1
 					}
 				},
 				"choir": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.25,
-						"src": "/characters/choir.png"
+						"scale": 1,
+						"src": "/characters/choir.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1.25
 					}
 				},
 				"ethnic": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.3,
-						"src": "/characters/ethnic.png"
+						"scale": 1,
+						"src": "/characters/ethnic.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1.3
 					}
 				},
 				"flute": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.0,
-						"src": "/characters/flute.png"
+						"scale": 1,
+						"src": "/characters/flute.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1
 					}
 				},
 				"guitar": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.0,
-						"src": "/characters/guitar.png"
+						"scale": 1,
+						"src": "/characters/guitar.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1
 					}
 				},
 				"mallet": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.0,
-						"src": "/characters/mallet.png"
+						"scale": 1,
+						"src": "/characters/mallet.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1
 					}
 				},
 				"organ": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.1,
-						"src": "/characters/organ.png"
+						"scale": 1,
+						"src": "/characters/organ.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1.1
 					}
 				},
 				"percussion": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.45,
-						"src": "/characters/percussion.png"
+						"scale": 1,
+						"src": "/characters/percussion.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1.45
 					}
 				},
 				"piano": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.0,
-						"src": "/characters/piano.png"
+						"scale": 1,
+						"src": "/characters/piano.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1
 					}
 				},
 				"reed": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.0,
-						"src": "/characters/reed.png"
+						"scale": 1,
+						"src": "/characters/reed.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1
 					}
 				},
 				"strings": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.0,
-						"src": "/characters/strings.png"
+						"scale": 1,
+						"src": "/characters/strings.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1
 					}
 				},
 				"synth": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.0,
-						"src": "/characters/synth.png"
+						"scale": 1,
+						"src": "/characters/synth.png",
+						"anchors": {
+							"centerX": 0.5,
+							"footY": 0.92,
+							"headY": 0.08
+						}
+					},
+					"stage": {
+						"offset": {
+							"x": 0,
+							"y": 0
+						},
+						"scale": 1.2
 					}
 				}
 			}
