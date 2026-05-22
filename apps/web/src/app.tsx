@@ -70,17 +70,6 @@ const demoSong: Song = buildDemoSong()
 
 const performerScalesStorageKey = 'midicon:performer-scales'
 const performerOffsetsStorageKey = 'midicon:performer-offsets'
-const stageBackgroundColor = '#030304'
-const stageBackgroundVertexShader = `
-	void main() {
-		gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-	}
-`
-const stageBackgroundFragmentShader = `
-	void main() {
-		gl_FragColor = vec4(3.0 / 255.0, 3.0 / 255.0, 4.0 / 255.0, 1.0);
-	}
-`
 const minPerformerScale = 0.4
 const maxPerformerScale = 2.5
 const finalFileExtensionPattern = /\.[^./\\]+$/
@@ -530,12 +519,11 @@ export function App() {
 
 	return (
 		<main className="relative h-dvh w-screen overflow-hidden bg-[#030304] text-[#fff8e7]">
-			<div className={`absolute inset-0 bg-[#030304] [&_canvas]:block [&_canvas]:bg-[#030304] ${editMode ? '[&_canvas]:cursor-grab [&_canvas:active]:cursor-grabbing' : ''}`}>
+			<div className={`absolute top-0 left-1/2 h-dvh aspect-[3/2] -translate-x-1/2 bg-[#030304] [&_canvas]:block ${editMode ? '[&_canvas]:cursor-grab [&_canvas:active]:cursor-grabbing' : ''}`}>
 				<Canvas
 					camera={{ far: 100, near: 0.1, position: [0, 0, 50], zoom: 100 }}
 					dpr={[1, 1.8]}
-					gl={{ alpha: false }}
-					onCreated={({ gl }) => gl.setClearColor(stageBackgroundColor, 1)}
+					gl={{ alpha: true }}
 					orthographic
 				>
 					<StageScene
@@ -877,7 +865,6 @@ function StageScene({
 	return (
 		<>
 			<OrthographicCameraRig />
-			<ViewportBackground />
 			<TheaterBackground />
 			<Stage
 				activeNotes={activeNotes}
@@ -893,23 +880,6 @@ function StageScene({
 				scales={scales}
 			/>
 		</>
-	)
-}
-
-function ViewportBackground() {
-	const size = useThree(state => state.size)
-	const { worldHeight, worldWidth } = computeWorldViewport(size)
-
-	return (
-		<mesh position={[0, 0, -20]} renderOrder={-2000}>
-			<planeGeometry args={[worldWidth, worldHeight]} />
-			<shaderMaterial
-				depthTest={false}
-				depthWrite={false}
-				fragmentShader={stageBackgroundFragmentShader}
-				vertexShader={stageBackgroundVertexShader}
-			/>
-		</mesh>
 	)
 }
 
