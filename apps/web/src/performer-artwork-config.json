@@ -71,7 +71,7 @@
 				"piano": {
 					"image": {
 						"kind": "asset",
-						"scale": 1.2,
+						"scale": 1.0,
 						"src": "/characters/piano.png"
 					}
 				},
