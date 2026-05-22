@@ -869,6 +869,7 @@ function StageScene({
 	return (
 		<>
 			<OrthographicCameraRig />
+			<ViewportBackground />
 			<TheaterBackground />
 			<Stage
 				activeNotes={activeNotes}
@@ -884,6 +885,18 @@ function StageScene({
 				scales={scales}
 			/>
 		</>
+	)
+}
+
+function ViewportBackground() {
+	const size = useThree(state => state.size)
+	const { worldHeight, worldWidth } = computeWorldViewport(size)
+
+	return (
+		<mesh position={[0, 0, -20]} renderOrder={-2000}>
+			<planeGeometry args={[worldWidth, worldHeight]} />
+			<meshBasicMaterial color={stageBackgroundColor} depthWrite={false} toneMapped={false} />
+		</mesh>
 	)
 }
 
