@@ -49,11 +49,13 @@ export function FloatingNotes({
 	accent,
 	active,
 	isPlaying,
+	origin = { x: 0, y: 0.95 },
 	renderOrder = 0,
 }: {
 	accent: string
 	active: number
 	isPlaying: boolean
+	origin?: { x: number, y: number }
 	renderOrder?: number
 }) {
 	const textures = useMemo(getGlyphTextures, [])
@@ -110,8 +112,8 @@ export function FloatingNotes({
 			sprite.visible = true
 			const k = age / LIFETIME
 			const drift = Math.sin(slot.seed + age * 2.4) * 0.34
-			const lift = 0.95 + k * 1.1
-			sprite.position.set(drift, lift, 0.05)
+			const lift = origin.y + k * 1.1
+			sprite.position.set(origin.x + drift, lift, 0.05)
 			const scale = 0.32 * (0.65 + 0.35 * (1 - k))
 			sprite.scale.set(scale, scale, 1)
 			sprite.material.rotation = Math.sin(slot.seed + age * 3) * 0.4

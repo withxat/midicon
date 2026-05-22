@@ -26,7 +26,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Midi } from '@tonejs/midi'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CanvasTexture, Plane, Raycaster, Vector2, Vector3 } from 'three'
-import { BarChart3, Check, Copy, Crosshair, Move, Music, Pause, Play, Repeat, RotateCcw, Scaling, Upload, Users } from 'ui/icons'
+import { BarChart3, Check, Copy, Crosshair, Move, Music, Pause, Play, Repeat, RotateCcw, Scaling, Upload, Users, X } from 'ui/icons'
 
 import { createPreferredEngine } from './audio/create-engine'
 import { FloatingPanel } from './floating-panel'
@@ -224,6 +224,13 @@ function getPerformerOffset(performer: Performer, offsets: Record<string, Perfor
 
 function getPerformerAnchors(performer: Performer, anchors: Record<string, PerformerArtworkAnchors>): PerformerArtworkAnchors {
 	return anchors[performer.id] ?? getPerformerArtworkAnchors(performer.category)
+}
+
+function anchorToLocalPosition(anchors: PerformerArtworkAnchors): { x: number, y: number } {
+	return {
+		x: (anchors.centerX - 0.5) * characterBaseWidth,
+		y: (0.5 - anchors.headY) * characterBaseHeight,
+	}
 }
 
 function buildArtworkConfigSnapshot(
@@ -972,98 +979,130 @@ export function App() {
 
 			{isDevelopmentMode && anchorsPanelOpen
 				? (
-						<FloatingPanel
-							align="top-left"
-							onClose={() => setAnchorsPanelOpen(false)}
-							subtitle={focused ? `${categoryById[focused.category].label} artwork calibration` : 'Select a performer first'}
-							title="Artwork anchors"
-						>
-							<div className="grid max-h-[62vh] min-w-[320px] gap-3 overflow-auto pr-1 text-[#fff8e7]">
-								{focused && focusedAnchors && focusedOffset
-									? (
-											<>
-												<div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 rounded-lg border border-[#fff8e7]/12 bg-[#fff8e7]/6 p-2.5" style={{ '--accent': focused.accent } as CSSProperties}>
-													<span className="grid size-[30px] place-items-center rounded-full bg-(--accent) text-[#211b22]">
-														<Icon height={16} icon={iconByCategory[focused.category]} width={16} />
-													</span>
-													<div className="min-w-0">
-														<p className="truncate text-[0.85rem] font-extrabold">{categoryById[focused.category].label}</p>
-														<p className="truncate font-mono text-[0.62rem] text-[#fff8e7]/55">{focused.id}</p>
-													</div>
-												</div>
-
-												<AnchorSlider
-													accent={focused.accent}
-													label="Center line"
-													max={1}
-													min={0}
-													onChange={value => handleAnchorChange(focused.id, { centerX: value })}
-													step={0.01}
-													value={focusedAnchors.centerX}
-												/>
-												<AnchorSlider
-													accent={focused.accent}
-													label="Head"
-													max={1}
-													min={0}
-													onChange={value => handleAnchorChange(focused.id, { headY: value })}
-													step={0.01}
-													value={focusedAnchors.headY}
-												/>
-												<AnchorSlider
-													accent={focused.accent}
-													label="Foot"
-													max={1}
-													min={0}
-													onChange={value => handleAnchorChange(focused.id, { footY: value })}
-													step={0.01}
-													value={focusedAnchors.footY}
-												/>
-												<AnchorSlider
-													accent={focused.accent}
-													label="Stage size"
-													max={maxPerformerScale}
-													min={minPerformerScale}
-													onChange={value => handleScaleChange(focused.id, value)}
-													step={0.05}
-													value={focusedScale}
-												/>
-												<AnchorSlider
-													accent={focused.accent}
-													label="Offset X"
-													max={maxStageOffset}
-													min={minStageOffset}
-													onChange={value => handleOffsetChange(focused.id, value, focusedOffset.y)}
-													step={0.05}
-													value={focusedOffset.x}
-												/>
-												<AnchorSlider
-													accent={focused.accent}
-													label="Offset Y"
-													max={maxStageOffset}
-													min={minStageOffset}
-													onChange={value => handleOffsetChange(focused.id, focusedOffset.x, value)}
-													step={0.05}
-													value={focusedOffset.y}
-												/>
-											</>
-										)
-									: (
-											<p className="rounded-lg border border-[#fff8e7]/12 bg-[#fff8e7]/6 p-3 text-[0.82rem] text-[#fff8e7]/70">
-												Choose a performer, then adjust its center, head and foot guide lines.
+						<div className="pointer-events-auto absolute inset-0 z-30 grid place-items-center bg-[#030304]/56 p-4 backdrop-blur-[3px]">
+							<div className="grid max-h-[min(760px,calc(100dvh-2rem))] w-[min(920px,calc(100vw-2rem))] grid-cols-[minmax(280px,0.95fr)_minmax(280px,1fr)] overflow-hidden rounded-lg border border-[#fff8e7]/14 bg-[#15131b]/94 shadow-[0_24px_80px_rgba(0,0,0,0.58)] max-md:grid-cols-1">
+								<div className="grid min-h-0 gap-3 border-r border-[#fff8e7]/10 p-4 max-md:border-r-0 max-md:border-b">
+									<div className="flex items-start justify-between gap-3">
+										<div>
+											<p className="font-mono text-[0.64rem] font-bold tracking-[0.1em] text-[#75d7c4] uppercase">Artwork anchors</p>
+											<p className="mt-1 text-[0.8rem] text-[#fff8e7]/62">
+												{focused ? `${categoryById[focused.category].label} calibration` : 'Select a performer first'}
 											</p>
-										)}
+										</div>
+										<button
+											aria-label="Close anchor editor"
+											className="grid size-9 place-items-center rounded-lg border border-[#fff8e7]/14 bg-[#fff8e7]/8 text-[#fff8e7] transition duration-150 ease-out hover:bg-[#fff8e7]/14 active:scale-[0.96]"
+											onClick={() => setAnchorsPanelOpen(false)}
+											type="button"
+										>
+											<X aria-hidden="true" size={14} />
+										</button>
+									</div>
 
-								<button
-									className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#75d7c4]/40 bg-[#75d7c4]/14 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#75d7c4] uppercase transition duration-150 ease-out hover:bg-[#75d7c4]/20 active:scale-[0.96]"
-									onClick={() => void handleCopyArtworkConfig()}
-									type="button"
-								>
-									{artworkConfigCopied ? <Check aria-hidden="true" size={14} /> : <Copy aria-hidden="true" size={14} />}
-									<span>{artworkConfigCopied ? 'Copied JSON' : 'Copy JSON'}</span>
-								</button>
+									{focused && focusedAnchors
+										? (
+												<AnchorPreview
+													accent={focused.accent}
+													anchors={focusedAnchors}
+													imageSrc={getPerformerArtworkSource(focused.category)?.src ?? ''}
+												/>
+											)
+										: (
+												<div className="grid min-h-[320px] place-items-center rounded-lg border border-[#fff8e7]/12 bg-[#08070a] p-5 text-center text-[0.82rem] text-[#fff8e7]/62">
+													Choose a performer to show its artwork, head line, center line and foot line.
+												</div>
+											)}
+								</div>
+
+								<div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 p-4 text-[#fff8e7]">
+									{focused && focusedAnchors && focusedOffset
+										? (
+												<>
+													<div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 rounded-lg border border-[#fff8e7]/12 bg-[#fff8e7]/6 p-2.5" style={{ '--accent': focused.accent } as CSSProperties}>
+														<span className="grid size-[30px] place-items-center rounded-full bg-(--accent) text-[#211b22]">
+															<Icon height={16} icon={iconByCategory[focused.category]} width={16} />
+														</span>
+														<div className="min-w-0">
+															<p className="truncate text-[0.85rem] font-extrabold">{categoryById[focused.category].label}</p>
+															<p className="truncate font-mono text-[0.62rem] text-[#fff8e7]/55">{focused.id}</p>
+														</div>
+													</div>
+
+													<div className="grid content-start gap-3 overflow-auto pr-1">
+														<AnchorSlider
+															accent={focused.accent}
+															label="Center line"
+															max={1}
+															min={0}
+															onChange={value => handleAnchorChange(focused.id, { centerX: value })}
+															step={0.01}
+															value={focusedAnchors.centerX}
+														/>
+														<AnchorSlider
+															accent={focused.accent}
+															label="Note origin"
+															max={1}
+															min={0}
+															onChange={value => handleAnchorChange(focused.id, { headY: value })}
+															step={0.01}
+															value={focusedAnchors.headY}
+														/>
+														<AnchorSlider
+															accent={focused.accent}
+															label="Foot line"
+															max={1}
+															min={0}
+															onChange={value => handleAnchorChange(focused.id, { footY: value })}
+															step={0.01}
+															value={focusedAnchors.footY}
+														/>
+														<AnchorSlider
+															accent={focused.accent}
+															label="Stage size"
+															max={maxPerformerScale}
+															min={minPerformerScale}
+															onChange={value => handleScaleChange(focused.id, value)}
+															step={0.05}
+															value={focusedScale}
+														/>
+														<AnchorSlider
+															accent={focused.accent}
+															label="Offset X"
+															max={maxStageOffset}
+															min={minStageOffset}
+															onChange={value => handleOffsetChange(focused.id, value, focusedOffset.y)}
+															step={0.05}
+															value={focusedOffset.x}
+														/>
+														<AnchorSlider
+															accent={focused.accent}
+															label="Offset Y"
+															max={maxStageOffset}
+															min={minStageOffset}
+															onChange={value => handleOffsetChange(focused.id, focusedOffset.x, value)}
+															step={0.05}
+															value={focusedOffset.y}
+														/>
+													</div>
+												</>
+											)
+										: (
+												<p className="rounded-lg border border-[#fff8e7]/12 bg-[#fff8e7]/6 p-3 text-[0.82rem] text-[#fff8e7]/70">
+													Open Performers and choose one character to calibrate.
+												</p>
+											)}
+
+									<button
+										className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#75d7c4]/40 bg-[#75d7c4]/14 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#75d7c4] uppercase transition duration-150 ease-out hover:bg-[#75d7c4]/20 active:scale-[0.96]"
+										onClick={() => void handleCopyArtworkConfig()}
+										type="button"
+									>
+										{artworkConfigCopied ? <Check aria-hidden="true" size={14} /> : <Copy aria-hidden="true" size={14} />}
+										<span>{artworkConfigCopied ? 'Copied JSON' : 'Copy JSON'}</span>
+									</button>
+								</div>
 							</div>
-						</FloatingPanel>
+						</div>
 					)
 				: null}
 
@@ -1133,6 +1172,51 @@ function AnchorSlider({
 			/>
 			<span className="text-right font-mono text-[0.7rem] text-[#fff8e7]/58">{value.toFixed(2)}</span>
 		</label>
+	)
+}
+
+function AnchorPreview({
+	accent,
+	anchors,
+	imageSrc,
+}: {
+	accent: string
+	anchors: PerformerArtworkAnchors
+	imageSrc: string
+}) {
+	return (
+		<div className="grid min-h-0 gap-3">
+			<div className="relative aspect-square overflow-hidden rounded-lg border border-[#fff8e7]/12 bg-[#08070a] shadow-[inset_0_0_0_1px_rgba(255,248,231,0.04)]" style={{ '--accent': accent } as CSSProperties}>
+				{imageSrc
+					? <img alt="" className="absolute inset-0 size-full object-contain p-6" draggable={false} src={imageSrc} />
+					: null}
+				<div className="absolute inset-x-6 top-[var(--head-y)] h-px bg-[#ffcf70] shadow-[0_0_12px_rgba(255,207,112,0.7)]" style={{ '--head-y': `${anchors.headY * 100}%` } as CSSProperties} />
+				<div className="absolute inset-x-6 top-[var(--foot-y)] h-px bg-[#ff8da1] shadow-[0_0_12px_rgba(255,141,161,0.7)]" style={{ '--foot-y': `${anchors.footY * 100}%` } as CSSProperties} />
+				<div className="absolute inset-y-6 left-[var(--center-x)] w-px bg-[#75d7c4] shadow-[0_0_12px_rgba(117,215,196,0.7)]" style={{ '--center-x': `${anchors.centerX * 100}%` } as CSSProperties} />
+				<div className="absolute left-[var(--center-x)] top-[var(--head-y)] grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[#ffcf70]/70 bg-[#15131b]/82 font-mono text-[1rem] text-[#ffcf70] shadow-[0_0_18px_rgba(255,207,112,0.28)]" style={{ '--center-x': `${anchors.centerX * 100}%`, '--head-y': `${anchors.headY * 100}%` } as CSSProperties}>
+					♪
+				</div>
+				<span className="absolute top-[calc(var(--head-y)+0.35rem)] left-8 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.62rem] font-bold tracking-[0.05em] text-[#ffcf70] uppercase" style={{ '--head-y': `${anchors.headY * 100}%` } as CSSProperties}>note origin</span>
+				<span className="absolute top-[calc(var(--foot-y)+0.35rem)] left-8 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.62rem] font-bold tracking-[0.05em] text-[#ff8da1] uppercase" style={{ '--foot-y': `${anchors.footY * 100}%` } as CSSProperties}>foot line</span>
+			</div>
+			<div className="grid grid-cols-3 gap-2 font-mono text-[0.62rem] font-bold tracking-[0.05em] uppercase">
+				<span className="rounded border border-[#75d7c4]/24 bg-[#75d7c4]/10 px-2 py-1 text-[#75d7c4]">
+					Center
+					{' '}
+					{anchors.centerX.toFixed(2)}
+				</span>
+				<span className="rounded border border-[#ffcf70]/24 bg-[#ffcf70]/10 px-2 py-1 text-[#ffcf70]">
+					Head
+					{' '}
+					{anchors.headY.toFixed(2)}
+				</span>
+				<span className="rounded border border-[#ff8da1]/24 bg-[#ff8da1]/10 px-2 py-1 text-[#ff8da1]">
+					Foot
+					{' '}
+					{anchors.footY.toFixed(2)}
+				</span>
+			</div>
+		</div>
 	)
 }
 
@@ -1315,6 +1399,7 @@ function PerformerModel({
 	const gl = useThree(state => state.gl)
 	const performerDepth = position[2]
 	const effectiveScale = scale * depthScale
+	const noteOrigin = anchorToLocalPosition(anchors)
 
 	// Refs so the window listeners always see the latest values without
 	// having to re-attach on every render.
@@ -1399,7 +1484,7 @@ function PerformerModel({
 				</mesh>
 				{showAnchors ? <CharacterAnchorGuides anchors={anchors} renderOrder={renderOrder + 2} /> : null}
 			</group>
-			<FloatingNotes accent={performer.accent} active={muted ? 0 : active} isPlaying={isPlaying} renderOrder={renderOrder + 1} />
+			<FloatingNotes accent={performer.accent} active={muted ? 0 : active} isPlaying={isPlaying} origin={noteOrigin} renderOrder={renderOrder + 1} />
 		</group>
 	)
 }
