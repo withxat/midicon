@@ -71,6 +71,16 @@ const demoSong: Song = buildDemoSong()
 const performerScalesStorageKey = 'midicon:performer-scales'
 const performerOffsetsStorageKey = 'midicon:performer-offsets'
 const stageBackgroundColor = '#030304'
+const stageBackgroundVertexShader = `
+	void main() {
+		gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+	}
+`
+const stageBackgroundFragmentShader = `
+	void main() {
+		gl_FragColor = vec4(3.0 / 255.0, 3.0 / 255.0, 4.0 / 255.0, 1.0);
+	}
+`
 const minPerformerScale = 0.4
 const maxPerformerScale = 2.5
 const finalFileExtensionPattern = /\.[^./\\]+$/
@@ -893,7 +903,12 @@ function ViewportBackground() {
 	return (
 		<mesh position={[0, 0, -20]} renderOrder={-2000}>
 			<planeGeometry args={[worldWidth, worldHeight]} />
-			<meshBasicMaterial color={stageBackgroundColor} depthWrite={false} toneMapped={false} />
+			<shaderMaterial
+				depthTest={false}
+				depthWrite={false}
+				fragmentShader={stageBackgroundFragmentShader}
+				vertexShader={stageBackgroundVertexShader}
+			/>
 		</mesh>
 	)
 }
