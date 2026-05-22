@@ -543,8 +543,6 @@ export function App() {
 				</Canvas>
 			</div>
 
-			<div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-[#030304]/80 via-[#030304]/30 to-transparent" style={{ height: 'min(180px, 22vh)' }} />
-			<div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-[#030304]/85 via-[#030304]/35 to-transparent" style={{ height: 'min(220px, 28vh)' }} />
 			<div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(ellipse_at_center,transparent_62%,rgba(3,3,4,0.32)_100%)]" />
 
 			<div className="pointer-events-none absolute top-4 left-4 z-20 max-w-[60vw] max-md:right-4 max-md:max-w-none">
