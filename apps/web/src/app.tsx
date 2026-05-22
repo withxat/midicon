@@ -30,7 +30,7 @@ import { BarChart3, Check, Copy, Crosshair, Move, Music, Pause, Play, Repeat, Ro
 
 import { createPreferredEngine } from './audio/create-engine'
 import { FloatingPanel } from './floating-panel'
-import { categoryById } from './instrument-category'
+import { categories, categoryById } from './instrument-category'
 import { groupTracksIntoPerformers, songFromMidi, withMidiBinary } from './midi-parse'
 import {
 	activePerformerArtworkPresetId,
@@ -215,15 +215,15 @@ function clampStageOffset(value: number): number {
 }
 
 function getPerformerScale(performer: Performer, scales: Record<string, number>): number {
-	return clampScale(scales[performer.id] ?? getPerformerArtworkStageScale(performer.category))
+	return clampScale(scales[performer.id] ?? scales[performer.category] ?? getPerformerArtworkStageScale(performer.category))
 }
 
 function getPerformerOffset(performer: Performer, offsets: Record<string, PerformerOffset>): PerformerOffset {
-	return offsets[performer.id] ?? getPerformerArtworkStageOffset(performer.category)
+	return offsets[performer.id] ?? offsets[performer.category] ?? getPerformerArtworkStageOffset(performer.category)
 }
 
 function getPerformerAnchors(performer: Performer, anchors: Record<string, PerformerArtworkAnchors>): PerformerArtworkAnchors {
-	return anchors[performer.id] ?? getPerformerArtworkAnchors(performer.category)
+	return anchors[performer.id] ?? anchors[performer.category] ?? getPerformerArtworkAnchors(performer.category)
 }
 
 function anchorToLocalPosition(anchors: PerformerArtworkAnchors): { x: number, y: number } {
@@ -231,6 +231,29 @@ function anchorToLocalPosition(anchors: PerformerArtworkAnchors): { x: number, y
 		x: (anchors.centerX - 0.5) * characterBaseWidth,
 		y: (0.5 - anchors.headY) * characterBaseHeight,
 	}
+}
+
+function findPerformerByCategory(performers: Performer[], category: InstrumentCategory): null | Performer {
+	return performers.find(performer => performer.category === category) ?? null
+}
+
+function getCategoryEditKey(performers: Performer[], category: InstrumentCategory): string {
+	return findPerformerByCategory(performers, category)?.id ?? category
+}
+
+function getCategoryScale(category: InstrumentCategory, performers: Performer[], scales: Record<string, number>): number {
+	const performer = findPerformerByCategory(performers, category)
+	return performer ? getPerformerScale(performer, scales) : clampScale(scales[category] ?? getPerformerArtworkStageScale(category))
+}
+
+function getCategoryOffset(category: InstrumentCategory, performers: Performer[], offsets: Record<string, PerformerOffset>): PerformerOffset {
+	const performer = findPerformerByCategory(performers, category)
+	return performer ? getPerformerOffset(performer, offsets) : (offsets[category] ?? getPerformerArtworkStageOffset(category))
+}
+
+function getCategoryAnchors(category: InstrumentCategory, performers: Performer[], anchors: Record<string, PerformerArtworkAnchors>): PerformerArtworkAnchors {
+	const performer = findPerformerByCategory(performers, category)
+	return performer ? getPerformerAnchors(performer, anchors) : (anchors[category] ?? getPerformerArtworkAnchors(category))
 }
 
 function buildArtworkConfigSnapshot(
@@ -253,11 +276,11 @@ function buildArtworkConfigSnapshot(
 					const offset = performer
 						? getPerformerOffset(performer, offsets)
 						: {
-								x: entry.stage?.offset?.x ?? defaultPerformerArtworkOffset.x,
-								y: entry.stage?.offset?.y ?? defaultPerformerArtworkOffset.y,
+								x: offsets[category]?.x ?? entry.stage?.offset?.x ?? defaultPerformerArtworkOffset.x,
+								y: offsets[category]?.y ?? entry.stage?.offset?.y ?? defaultPerformerArtworkOffset.y,
 							}
-					const scale = performer ? getPerformerScale(performer, scales) : (entry.stage?.scale ?? 1)
-					const imageAnchors = performer ? getPerformerAnchors(performer, anchors) : sanitizeAnchors(entry.image.anchors)
+					const scale = performer ? getPerformerScale(performer, scales) : (scales[category] ?? entry.stage?.scale ?? 1)
+					const imageAnchors = performer ? getPerformerAnchors(performer, anchors) : sanitizeAnchors(anchors[category] ?? entry.image.anchors)
 
 					return [category, {
 						image: {
@@ -368,6 +391,7 @@ export function App() {
 	const [performerScales, setPerformerScales] = useState<Record<string, number>>(() => loadStoredScales())
 	const [performerOffsets, setPerformerOffsets] = useState<Record<string, PerformerOffset>>(() => loadStoredOffsets())
 	const [performerAnchors, setPerformerAnchors] = useState<Record<string, PerformerArtworkAnchors>>(() => loadStoredAnchors())
+	const [anchorEditorCategory, setAnchorEditorCategory] = useState<InstrumentCategory>('piano')
 	const [artworkConfigCopied, setArtworkConfigCopied] = useState(false)
 
 	useEffect(() => {
@@ -430,11 +454,20 @@ export function App() {
 		window.setTimeout(setArtworkConfigCopied, 1500, false)
 	}, [performerAnchors, performerOffsets, performerScales, song.performers])
 
+	const handleAnchorCategorySelect = useCallback((category: InstrumentCategory) => {
+		setAnchorEditorCategory(category)
+		setFocusedId(findPerformerByCategory(song.performers, category)?.id ?? null)
+	}, [song.performers])
+
 	const focused = focusedId ? (song.performers.find(performer => performer.id === focusedId) ?? null) : null
+
 	const scoreAccent = focused?.accent ?? '#ffcf70'
-	const focusedAnchors = focused ? getPerformerAnchors(focused, performerAnchors) : null
-	const focusedOffset = focused ? getPerformerOffset(focused, performerOffsets) : null
-	const focusedScale = focused ? getPerformerScale(focused, performerScales) : 1
+	const selectedAnchorCategory = focused?.category ?? anchorEditorCategory
+	const anchorEditKey = getCategoryEditKey(song.performers, selectedAnchorCategory)
+	const anchorCategoryDef = categoryById[selectedAnchorCategory]
+	const focusedAnchors = getCategoryAnchors(selectedAnchorCategory, song.performers, performerAnchors)
+	const focusedOffset = getCategoryOffset(selectedAnchorCategory, song.performers, performerOffsets)
+	const focusedScale = getCategoryScale(selectedAnchorCategory, song.performers, performerScales)
 	const pianoRollTracks = useMemo(
 		() => song.performers.map(performer => ({
 			accent: performer.accent,
@@ -980,13 +1013,13 @@ export function App() {
 			{isDevelopmentMode && anchorsPanelOpen
 				? (
 						<div className="pointer-events-auto absolute inset-0 z-30 grid place-items-center bg-[#030304]/56 p-4 backdrop-blur-[3px]">
-							<div className="grid max-h-[min(760px,calc(100dvh-2rem))] w-[min(920px,calc(100vw-2rem))] grid-cols-[minmax(280px,0.95fr)_minmax(280px,1fr)] overflow-hidden rounded-lg border border-[#fff8e7]/14 bg-[#15131b]/94 shadow-[0_24px_80px_rgba(0,0,0,0.58)] max-md:grid-cols-1">
+							<div className="grid max-h-[min(760px,calc(100dvh-2rem))] w-[min(1180px,calc(100vw-2rem))] grid-cols-[minmax(420px,1.3fr)_minmax(300px,0.9fr)] overflow-hidden rounded-lg border border-[#fff8e7]/14 bg-[#15131b]/94 shadow-[0_24px_80px_rgba(0,0,0,0.58)] max-md:grid-cols-1">
 								<div className="grid min-h-0 gap-3 border-r border-[#fff8e7]/10 p-4 max-md:border-r-0 max-md:border-b">
 									<div className="flex items-start justify-between gap-3">
 										<div>
 											<p className="font-mono text-[0.64rem] font-bold tracking-[0.1em] text-[#75d7c4] uppercase">Artwork anchors</p>
 											<p className="mt-1 text-[0.8rem] text-[#fff8e7]/62">
-												{focused ? `${categoryById[focused.category].label} calibration` : 'Select a performer first'}
+												{`${anchorCategoryDef.label} calibration`}
 											</p>
 										</div>
 										<button
@@ -999,98 +1032,91 @@ export function App() {
 										</button>
 									</div>
 
-									{focused && focusedAnchors
-										? (
-												<AnchorPreview
-													accent={focused.accent}
-													anchors={focusedAnchors}
-													imageSrc={getPerformerArtworkSource(focused.category)?.src ?? ''}
-												/>
-											)
-										: (
-												<div className="grid min-h-[320px] place-items-center rounded-lg border border-[#fff8e7]/12 bg-[#08070a] p-5 text-center text-[0.82rem] text-[#fff8e7]/62">
-													Choose a performer to show its artwork, head line, center line and foot line.
-												</div>
-											)}
+									<div className="grid min-h-0 gap-3">
+										<AnchorPreview
+											accent={anchorCategoryDef.accent}
+											anchors={focusedAnchors}
+											imageSrc={getPerformerArtworkSource(selectedAnchorCategory)?.src ?? ''}
+										/>
+										<AnchorLineup
+											anchors={performerAnchors}
+											onSelect={handleAnchorCategorySelect}
+											performers={song.performers}
+											scales={performerScales}
+											selectedCategory={selectedAnchorCategory}
+										/>
+									</div>
 								</div>
 
 								<div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 p-4 text-[#fff8e7]">
-									{focused && focusedAnchors && focusedOffset
-										? (
-												<>
-													<div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 rounded-lg border border-[#fff8e7]/12 bg-[#fff8e7]/6 p-2.5" style={{ '--accent': focused.accent } as CSSProperties}>
-														<span className="grid size-[30px] place-items-center rounded-full bg-(--accent) text-[#211b22]">
-															<Icon height={16} icon={iconByCategory[focused.category]} width={16} />
-														</span>
-														<div className="min-w-0">
-															<p className="truncate text-[0.85rem] font-extrabold">{categoryById[focused.category].label}</p>
-															<p className="truncate font-mono text-[0.62rem] text-[#fff8e7]/55">{focused.id}</p>
-														</div>
-													</div>
+									<>
+										<div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 rounded-lg border border-[#fff8e7]/12 bg-[#fff8e7]/6 p-2.5" style={{ '--accent': anchorCategoryDef.accent } as CSSProperties}>
+											<span className="grid size-[30px] place-items-center rounded-full bg-(--accent) text-[#211b22]">
+												<Icon height={16} icon={iconByCategory[selectedAnchorCategory]} width={16} />
+											</span>
+											<div className="min-w-0">
+												<p className="truncate text-[0.85rem] font-extrabold">{anchorCategoryDef.label}</p>
+												<p className="truncate font-mono text-[0.62rem] text-[#fff8e7]/55">{anchorEditKey}</p>
+											</div>
+										</div>
 
-													<div className="grid content-start gap-3 overflow-auto pr-1">
-														<AnchorSlider
-															accent={focused.accent}
-															label="Center line"
-															max={1}
-															min={0}
-															onChange={value => handleAnchorChange(focused.id, { centerX: value })}
-															step={0.01}
-															value={focusedAnchors.centerX}
-														/>
-														<AnchorSlider
-															accent={focused.accent}
-															label="Note origin"
-															max={1}
-															min={0}
-															onChange={value => handleAnchorChange(focused.id, { headY: value })}
-															step={0.01}
-															value={focusedAnchors.headY}
-														/>
-														<AnchorSlider
-															accent={focused.accent}
-															label="Foot line"
-															max={1}
-															min={0}
-															onChange={value => handleAnchorChange(focused.id, { footY: value })}
-															step={0.01}
-															value={focusedAnchors.footY}
-														/>
-														<AnchorSlider
-															accent={focused.accent}
-															label="Stage size"
-															max={maxPerformerScale}
-															min={minPerformerScale}
-															onChange={value => handleScaleChange(focused.id, value)}
-															step={0.05}
-															value={focusedScale}
-														/>
-														<AnchorSlider
-															accent={focused.accent}
-															label="Offset X"
-															max={maxStageOffset}
-															min={minStageOffset}
-															onChange={value => handleOffsetChange(focused.id, value, focusedOffset.y)}
-															step={0.05}
-															value={focusedOffset.x}
-														/>
-														<AnchorSlider
-															accent={focused.accent}
-															label="Offset Y"
-															max={maxStageOffset}
-															min={minStageOffset}
-															onChange={value => handleOffsetChange(focused.id, focusedOffset.x, value)}
-															step={0.05}
-															value={focusedOffset.y}
-														/>
-													</div>
-												</>
-											)
-										: (
-												<p className="rounded-lg border border-[#fff8e7]/12 bg-[#fff8e7]/6 p-3 text-[0.82rem] text-[#fff8e7]/70">
-													Open Performers and choose one character to calibrate.
-												</p>
-											)}
+										<div className="grid content-start gap-3 overflow-auto pr-1">
+											<AnchorSlider
+												accent={anchorCategoryDef.accent}
+												label="Center line"
+												max={1}
+												min={0}
+												onChange={value => handleAnchorChange(anchorEditKey, { centerX: value })}
+												step={0.01}
+												value={focusedAnchors.centerX}
+											/>
+											<AnchorSlider
+												accent={anchorCategoryDef.accent}
+												label="Note origin"
+												max={1}
+												min={0}
+												onChange={value => handleAnchorChange(anchorEditKey, { headY: value })}
+												step={0.01}
+												value={focusedAnchors.headY}
+											/>
+											<AnchorSlider
+												accent={anchorCategoryDef.accent}
+												label="Foot line"
+												max={1}
+												min={0}
+												onChange={value => handleAnchorChange(anchorEditKey, { footY: value })}
+												step={0.01}
+												value={focusedAnchors.footY}
+											/>
+											<AnchorSlider
+												accent={anchorCategoryDef.accent}
+												label="Stage size"
+												max={maxPerformerScale}
+												min={minPerformerScale}
+												onChange={value => handleScaleChange(anchorEditKey, value)}
+												step={0.05}
+												value={focusedScale}
+											/>
+											<AnchorSlider
+												accent={anchorCategoryDef.accent}
+												label="Offset X"
+												max={maxStageOffset}
+												min={minStageOffset}
+												onChange={value => handleOffsetChange(anchorEditKey, value, focusedOffset.y)}
+												step={0.05}
+												value={focusedOffset.x}
+											/>
+											<AnchorSlider
+												accent={anchorCategoryDef.accent}
+												label="Offset Y"
+												max={maxStageOffset}
+												min={minStageOffset}
+												onChange={value => handleOffsetChange(anchorEditKey, focusedOffset.x, value)}
+												step={0.05}
+												value={focusedOffset.y}
+											/>
+										</div>
+									</>
 
 									<button
 										className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#75d7c4]/40 bg-[#75d7c4]/14 px-3 font-mono text-[0.7rem] font-bold tracking-[0.05em] text-[#75d7c4] uppercase transition duration-150 ease-out hover:bg-[#75d7c4]/20 active:scale-[0.96]"
@@ -1215,6 +1241,93 @@ function AnchorPreview({
 					{' '}
 					{anchors.footY.toFixed(2)}
 				</span>
+			</div>
+		</div>
+	)
+}
+
+function AnchorLineup({
+	anchors,
+	onSelect,
+	performers,
+	scales,
+	selectedCategory,
+}: {
+	anchors: Record<string, PerformerArtworkAnchors>
+	onSelect: (category: InstrumentCategory) => void
+	performers: Performer[]
+	scales: Record<string, number>
+	selectedCategory: InstrumentCategory
+}) {
+	const footBaseline = 150
+	const baseImageSize = 58
+
+	return (
+		<div className="relative overflow-hidden rounded-lg border border-[#fff8e7]/12 bg-[#08070a]">
+			<div className="absolute inset-x-0 top-[44px] h-px bg-[#ffcf70]/70 shadow-[0_0_10px_rgba(255,207,112,0.45)]" />
+			<div className="absolute inset-x-0 top-[150px] h-px bg-[#ff8da1]/80 shadow-[0_0_10px_rgba(255,141,161,0.5)]" />
+			<div className="pointer-events-none absolute top-[46px] left-2 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.58rem] font-bold tracking-[0.04em] text-[#ffcf70] uppercase">note reference</div>
+			<div className="pointer-events-none absolute top-[152px] left-2 rounded bg-[#08070a]/82 px-1.5 py-0.5 font-mono text-[0.58rem] font-bold tracking-[0.04em] text-[#ff8da1] uppercase">foot baseline</div>
+			<div className="relative grid h-[200px] gap-1.5 px-3 pt-2 pb-8" style={{ gridTemplateColumns: `repeat(${categories.length}, minmax(0, 1fr))` }}>
+				{categories.map((category) => {
+					const performerAnchors = getCategoryAnchors(category.id, performers, anchors)
+					const scale = getCategoryScale(category.id, performers, scales)
+					const imageSize = baseImageSize * scale
+					const imageTop = footBaseline - performerAnchors.footY * imageSize
+					const noteTop = imageTop + performerAnchors.headY * imageSize
+					const noteLeft = performerAnchors.centerX * imageSize
+					const selected = category.id === selectedCategory
+					const imageSrc = getPerformerArtworkSource(category.id)?.src ?? ''
+
+					return (
+						<button
+							aria-pressed={selected}
+							className={`relative min-w-0 rounded-lg border transition duration-150 ease-out active:scale-[0.96] ${selected ? 'border-(--accent) bg-[#fff8e7]/8 shadow-[0_0_0_1px_var(--accent)]' : 'border-[#fff8e7]/10 bg-[#fff8e7]/4 hover:bg-[#fff8e7]/7'}`}
+							key={category.id}
+							onClick={() => onSelect(category.id)}
+							style={{ '--accent': category.accent } as CSSProperties}
+							type="button"
+						>
+							{imageSrc
+								? (
+										<img
+											style={{
+												height: imageSize,
+												top: imageTop,
+												width: imageSize,
+											}}
+											alt=""
+											className="absolute left-1/2 max-w-none -translate-x-1/2 object-contain"
+											draggable={false}
+											src={imageSrc}
+										/>
+									)
+								: null}
+							<span
+								style={{
+									left: `calc(50% - ${imageSize / 2}px + ${performerAnchors.centerX * imageSize}px)`,
+									top: imageTop + 4,
+								}}
+								className="absolute z-10 block h-[118px] w-px bg-[#75d7c4]/75 shadow-[0_0_8px_rgba(117,215,196,0.45)]"
+							/>
+							<span
+								style={{
+									left: `calc(50% - ${imageSize / 2}px + ${noteLeft}px)`,
+									top: noteTop,
+								}}
+								className="absolute z-20 grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[#ffcf70]/70 bg-[#15131b]/88 font-mono text-[0.72rem] text-[#ffcf70]"
+							>
+								♪
+							</span>
+							<span className="absolute inset-x-1 bottom-1 truncate rounded bg-[#08070a]/78 px-1.5 py-1 text-center font-mono text-[0.58rem] font-bold tracking-[0.04em] text-[#fff8e7]/74 uppercase">
+								{category.label}
+								{' '}
+								{scale.toFixed(2)}
+								x
+							</span>
+						</button>
+					)
+				})}
 			</div>
 		</div>
 	)
