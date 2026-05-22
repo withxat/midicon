@@ -2,7 +2,7 @@
 
 :root {
 	color: #fff8e7;
-	background: #040405;
+	background: #030304;
 	font-family: Fraunces, Georgia, 'Times New Roman', serif;
 	font-synthesis: none;
 	text-rendering: optimizeLegibility;
@@ -13,7 +13,7 @@ body {
 	margin: 0;
 	min-width: 320px;
 	min-height: 100vh;
-	background: #040405;
+	background: #030304;
 }
 
 button,

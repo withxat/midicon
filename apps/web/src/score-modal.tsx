@@ -35,7 +35,7 @@ export function ScoreModal({ children, onClose, subtitle, title }: ScoreModalPro
 		<div
 			aria-label={title}
 			aria-modal="true"
-			className="fixed inset-0 z-50 grid place-items-center bg-[#040405]/82 px-4 py-6 backdrop-blur-[10px]"
+			className="fixed inset-0 z-50 grid place-items-center bg-[#030304]/82 px-4 py-6 backdrop-blur-[10px]"
 			onClick={onClose}
 			role="dialog"
 		>
