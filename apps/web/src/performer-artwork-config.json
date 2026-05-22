@@ -8,78 +8,91 @@
 				"bass": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/bass.png"
 					}
 				},
 				"brass": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/brass.png"
 					}
 				},
 				"choir": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/choir.png"
 					}
 				},
 				"ethnic": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/ethnic.png"
 					}
 				},
 				"flute": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/flute.png"
 					}
 				},
 				"guitar": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/guitar.png"
 					}
 				},
 				"mallet": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/mallet.png"
 					}
 				},
 				"organ": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/organ.png"
 					}
 				},
 				"percussion": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/percussion.png"
 					}
 				},
 				"piano": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/piano.png"
 					}
 				},
 				"reed": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/reed.png"
 					}
 				},
 				"strings": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/strings.png"
 					}
 				},
 				"synth": {
 					"image": {
 						"kind": "asset",
+						"scale": 1.0,
 						"src": "/characters/synth.png"
 					}
 				}

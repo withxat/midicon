@@ -31,7 +31,7 @@ import { createPreferredEngine } from './audio/create-engine'
 import { FloatingPanel } from './floating-panel'
 import { categoryById } from './instrument-category'
 import { groupTracksIntoPerformers, songFromMidi, withMidiBinary } from './midi-parse'
-import { getPerformerArtworkSource } from './performer-artwork'
+import { getPerformerArtworkScale, getPerformerArtworkSource } from './performer-artwork'
 import { PianoRoll } from './piano-roll'
 import { ScoreModal } from './score-modal'
 import {
@@ -1123,7 +1123,7 @@ function useCharacterArtwork(performer: Performer): CharacterArtwork {
 				return
 			}
 			ctx.clearRect(0, 0, artwork.canvas.width, artwork.canvas.height)
-			drawContainImage(ctx, image, artwork.canvas.width)
+			drawContainImage(ctx, image, artwork.canvas.width, getPerformerArtworkScale(artworkSource))
 			artwork.texture.needsUpdate = true
 		}
 		image.onerror = () => {
@@ -1144,8 +1144,8 @@ function useCharacterArtwork(performer: Performer): CharacterArtwork {
 	return { texture: artwork.texture }
 }
 
-function drawContainImage(context: CanvasRenderingContext2D, image: HTMLImageElement, size: number) {
-	const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight)
+function drawContainImage(context: CanvasRenderingContext2D, image: HTMLImageElement, size: number, artworkScale = 1) {
+	const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight) * artworkScale
 	const width = image.naturalWidth * scale
 	const height = image.naturalHeight * scale
 	context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height)
